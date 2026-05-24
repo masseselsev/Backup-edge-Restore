@@ -1,0 +1,144 @@
+# Borg Backup & Bare-Metal Restore Orchestrator
+
+A production-grade, centralized, dockerized orchestration panel designed for managing, backup scheduling, and bare-metal flashing restoration of 200+ Debian-based edge nodes.
+
+---
+
+## 🏗️ Architecture Overview
+
+The system is fully containerized and uses a decoupled architecture to manage concurrency, state synchronization, and privileged hardware execution:
+
+```
+                  ┌──────────────────────────────────────────────┐
+                  │              React SPA Frontend              │
+                  │             (Port 7777 - Nginx)              │
+                  └──────────────────────┬───────────────────────┘
+                                         │ REST API
+                                         ▼
+                  ┌──────────────────────────────────────────────┐
+                  │               FastAPI Backend                │
+                  │             (Port 8000 - Uvicorn)            │
+                  └──────────────┬───────────────┬───────────────┘
+                                 │               │
+                     Writes Logs │               │ Dispatches Tasks
+                     & Metadata  │               │
+                                 ▼               ▼
+   ┌──────────────┐       ┌──────────┐      ┌──────────┐       ┌─────────────┐
+   │  PostgreSQL  │ ◄──── │ Database │      │  Redis   │ ◄───► │   Celery    │
+   │ (Port 5432)  │       │  Session │      │  Broker  │       │ Task Worker │
+   └──────────────┘       └──────────┘      └──────────┘       └──────┬──────┘
+                                                                      │ Runs
+                                                                      │ Privileged Actions
+                                                                      ▼
+                                                               ┌─────────────┐
+                                                               │  Edge Fleet │
+                                                               │   Targets   │
+                                                               └─────────────┘
+```
+
+### Components:
+1. **React SPA Frontend (Port 7777)**: Responsive, dark-themed dashboard mapped to tabs (Fleet, Flasher, History, Settings). Displays stats (de-duplication ratios, total space) and features a terminal console overlay to stream execution logs in real-time.
+2. **FastAPI Backend (Port 8000)**: Serves RESTful APIs, implements the IP parser (supporting CIDR, lists, and ranges), validates drive type configurations, and tracks active jobs.
+3. **Celery Worker (Privileged Host-Device Mode)**: Subscribed to task queues to execute playbooks and perform flashing partition commands (requires access to `/dev` of the local orchestrator node during flashing).
+4. **Borg SSH Server (Port 12345)**: Isolated central repository environment where edge node public keys are automatically appended to `/home/borg/.ssh/authorized_keys` under forced command restrictions (`command="borg serve --restrict-to-path ..."`).
+5. **Redis**: In-memory task queue broker and result backend.
+6. **PostgreSQL**: Stores Orchestrator states, global settings, node inventory metadata, backup histories, and task execution logs.
+
+---
+
+## 🛠️ Key Orchestration Modules
+
+### 1. Fleet Provisioning & Bulk IP Parsing
+- Supports registering hosts via **lists** (comma-separated), **ranges** (e.g. `192.168.1.50-60` or `10.0.0.1-10.0.0.3`), and **CIDR blocks** (e.g. `192.168.1.0/30`).
+- Spawns parallel, concurrent Celery tasks utilizing a pre-configured Celery concurrency of 24 to bootstrap multiple edge nodes simultaneously.
+- Form inputs pre-populate with default credentials (`user`, `admin`, `SSH port 2222`) to speed up administrative workflows.
+
+### 2. Auto-Prepare Playbook (Label & EFI Extraction)
+- Runs an idempotent Ansible playbook to verify node readiness.
+- Sets persistent filesystem labels (`edgeroot` on the root partition and `edgeboot` on the ESP boot partition).
+- Captures and saves the unique EFI FAT32 filesystem UUID.
+- Rewrites the target's `/etc/fstab` to reference partition labels, shielding the operating system against hardware device drift (e.g., SATA `/dev/sda` transitioning to NVMe `/dev/nvme0n1` on new hardware).
+
+### 3. Backup Scheduling & Exclusive Daily Prune
+- Backups are initiated remotely via `ssh` command and stream data to the central Borg SSH Server.
+- To prevent database lock-ups on the shared Borg repositories, pruning is decoupled from individual backups. A global Celery Beat schedule triggers a local repository `borg prune` daily at 3:00 AM using the global prune rules (daily, weekly, monthly limits).
+
+### 4. Bare-Metal Flashing Restore
+- **Device Protection Safeguard**: Scans target block devices on the orchestrator host while shielding the host's own root system drive against accidental overwrite.
+- **Drive Type Mismatch Warning**: Warns if the backup target was captured from a `SATA` drive and the flasher target is an `NVMe` device (or vice versa), requiring manual verification overrides.
+- **EFI UUID Preservation**: Partitions the target device as GPT, formats the ESP boot partition and explicitly overrides its UUID using the historical captured value (`mkfs.vfat -i <EFI_UUID_HEX>`).
+- **PCIe Network Drift Mitigation**: Wipes old persistent network device bindings and injects generic wildcard interface configurations (`eth*` and `en*`) to guarantee network reachability upon post-flashing boots.
+- **Chroot Bootloader Config**: Mounts the system, binds virtualization paths (`/dev`, `/proc`, `/sys`), reinstalls GRUB on the target device, updates initramfs, and writes a fallback EFI loader path (`EFI/BOOT/BOOTX64.EFI`).
+- **Auditing**: Performs a post-restore verification audit confirming label configurations inside `/etc/fstab` before safely unmounting.
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker & Docker Compose installed.
+- Target edge nodes accessible via network.
+
+### Step 1: Environment Configuration
+Create a `.env` file in the project root:
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=securepassword
+POSTGRES_DB=borg_orchestrator
+REDIS_URL=redis://redis:6379/0
+BORG_PASSPHRASE=verysecureborgpassphrase
+DATABASE_URL=postgresql://postgres:securepassword@db:5432/borg_orchestrator
+```
+
+### Step 2: Spin Up the Stack
+Run the following command to compile assets and start all services:
+```bash
+docker compose up -d --build
+```
+
+### Step 3: Access Panels
+- **Frontend Dashboard**: [http://localhost:7777](http://localhost:7777)
+- **FastAPI REST API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Borg Repository SSH Server**: `ssh://borg@localhost:12345/data/borg`
+
+---
+
+## 📂 Repository Layout
+
+```
+.
+├── backend
+│   ├── alembic/                # DB Migrations
+│   ├── playbooks/              # Ansible bootstrap/prepare playbooks
+│   ├── ansible_utils.py        # Python subprocess wrapper for Ansible
+│   ├── main.py                 # FastAPI endpoints
+│   ├── models.py               # SQLAlchemy models
+│   ├── schemas.py              # Pydantic validation schemas
+│   ├── tasks.py                # Celery tasks (backup, bootstrap, prune)
+│   ├── restore_logic.py        # Bare-metal flashing restore routine
+│   └── tests/                  # Pytest unit tests
+├── docker
+│   ├── backend/                # FastAPI & Worker Dockerfile
+│   ├── borg/                   # SSH Borg Server Dockerfile
+│   └── frontend/               # React & Nginx Dockerfile
+├── frontend
+│   ├── src/
+│   │   ├── components/         # Fleet, Flasher, History UI tabs
+│   │   ├── App.tsx             # Navigation controller
+│   │   └── index.css           # Tailwind configuration styles
+│   ├── tailwind.config.js
+│   └── nginx.conf              # Production asset routing server configuration
+└── docker-compose.yml          # Container stack orchestration definition
+```
+
+---
+
+## 📝 Development Guidelines (GEMINI.md Rules)
+- **Type Hinting**: All Python routes and schemas must use Pydantic models for request/response serialization.
+- **Maximum File Size**: No single source file must exceed **500 lines**. Routers, tasks, and components must be modularly split (e.g., `tasks.py` split into `restore_logic.py`).
+- **Database Modifications**: Do not update database schemas manually. Always generate migrations via Alembic:
+  ```bash
+  docker compose exec backend alembic revision --autogenerate -m "revision_name"
+  docker compose exec backend alembic upgrade head
+  ```
+- **Secrets Management**: Read Borg Passphrase (`BORG_PASSPHRASE`) and Database credentials exclusively from environment variables/`.env`. Never store them in DB or VCS.
