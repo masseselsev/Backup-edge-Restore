@@ -1,0 +1,11 @@
+fastapi==0.110.0
+uvicorn[standard]==0.28.0
+sqlalchemy==2.0.28
+psycopg2-binary==2.9.9
+alembic==1.13.1
+celery==5.3.6
+redis==5.0.3
+ansible-runner==2.3.4
+pydantic==2.6.4
+pydantic-settings==2.2.1
+pytest==8.1.1

@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend/Dockerfile
+    restart: always
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+    volumes:
+      - ./backend:/app
+      - borg-data:/data/borg
+      - ssh-keys:/root/.ssh
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend/Dockerfile
+    restart: always
+    privileged: true
+    command: celery -A tasks.celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+    volumes:
+      - ./backend:/app
+      - /dev:/dev
+      - borg-data:/data/borg
+      - ssh-keys:/root/.ssh
+    depends_on:
+      - db
+      - redis
+
+  borg-server:
+    build:
+      context: .
+      dockerfile: docker/borg/Dockerfile
+    restart: always
+    ports:
+      - "12345:22"
+    volumes:
+      - borg-data:/data/borg
+      - ssh-keys:/home/borg/.ssh
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/frontend/Dockerfile
+    restart: always
+    ports:
+      - "7777:7777"
+    depends_on:
+      - backend
+
+volumes:
+  pg-data:
+  borg-data:
+  ssh-keys:
