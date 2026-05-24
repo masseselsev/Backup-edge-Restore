@@ -84,6 +84,7 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         task_id=task_id,
         playbook_name="bootstrap.yml",
         host_ip=node.ip_address,
+        ssh_port=node.ssh_port,
         extra_vars={"bootstrap_user": bootstrap_user},
         ssh_password=ssh_password
     )
@@ -147,6 +148,7 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
         task_id=task_id,
         playbook_name="prepare.yml",
         host_ip=node.ip_address,
+        ssh_port=node.ssh_port,
         extra_vars={},
         ssh_key_path="/root/.ssh/id_ed25519"
     )
@@ -212,6 +214,7 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
     # Connect via SSH to the edge node and execute Borg backup pushing to Central server
     ssh_cmd = [
         "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
         f"sudo -u borg BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg create --json --stats {borg_repo_url}::{archive_name} / --exclude {settings.global_exclusions}"

@@ -10,6 +10,7 @@ def run_ansible_playbook(
     task_id: str,
     playbook_name: str,
     host_ip: str,
+    ssh_port: int,
     extra_vars: Dict[str, Any],
     ssh_password: Optional[str] = None,
     ssh_key_path: Optional[str] = None
@@ -22,6 +23,7 @@ def run_ansible_playbook(
         task_id: The UUID of the TaskLog tracking this task.
         playbook_name: The filename of the playbook to execute (e.g. bootstrap.yml).
         host_ip: IP address of the target edge node.
+        ssh_port: SSH port of the target edge node.
         extra_vars: Dictionary of variables to pass into the playbook.
         ssh_password: Temporary password for password-based authentication.
         ssh_key_path: Path to the private SSH key for passwordless authentication.
@@ -36,11 +38,12 @@ def run_ansible_playbook(
         playbook_path = os.path.join(base_dir, "playbooks", playbook_name)
 
         # Create temporary inventory
-        inventory_content = f"{host_ip} ansible_host={host_ip} ansible_user=root"
+        inventory_content = f"{host_ip} ansible_host={host_ip} ansible_port={ssh_port} ansible_user=root"
         if ssh_password:
             # Escalation to root
             inventory_content = (
                 f"{host_ip} ansible_host={host_ip} "
+                f"ansible_port={ssh_port} "
                 f"ansible_user={extra_vars.get('bootstrap_user', 'root')} "
                 f"ansible_password={ssh_password} "
                 f"ansible_become=yes "
@@ -48,7 +51,7 @@ def run_ansible_playbook(
                 f"ansible_become_password={ssh_password}"
             )
         elif ssh_key_path:
-            inventory_content += f" ansible_ssh_private_key_file={ssh_key_path}"
+            inventory_content += f" ansible_ssh_private_key_file={ssh_key_path} ansible_port={ssh_port}"
 
         # Write temporary files for safety
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as inv_file:
