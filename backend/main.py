@@ -1,6 +1,7 @@
 import os
 import subprocess
 import uuid
+import ipaddress
 from typing import List, Dict, Any
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +21,64 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def parse_ip_input(ip_input: str) -> List[str]:
+    """
+    Parses IP input which can be single IP, comma/newline-separated list,
+    ranges (e.g. 192.168.1.50-100 or 192.168.1.50-192.168.1.60), or CIDR block.
+
+    Args:
+        ip_input: The raw string from the user form.
+
+    Returns:
+        List of parsed valid IP address strings.
+    """
+    # Clean input - convert newlines and spaces to commas
+    cleaned = ip_input.replace("\n", ",").replace(" ", ",")
+    raw_entries = [r.strip() for r in cleaned.split(",") if r.strip()]
+    ips = []
+    for entry in raw_entries:
+        if "/" in entry:
+            # CIDR block
+            try:
+                net = ipaddress.ip_network(entry, strict=False)
+                # Add all hosts in network
+                ips.extend([str(ip) for ip in net.hosts()])
+            except Exception:
+                pass
+        elif "-" in entry:
+            # IP range
+            try:
+                parts = entry.split("-")
+                start_str = parts[0].strip()
+                end_str = parts[1].strip()
+                if "." in end_str:
+                    # Full IP range e.g. 192.168.1.50-192.168.1.60
+                    start_ip = ipaddress.ip_address(start_str)
+                    end_ip = ipaddress.ip_address(end_str)
+                    curr = start_ip
+                    while curr <= end_ip:
+                        ips.append(str(curr))
+                        curr += 1
+                else:
+                    # Short range e.g. 192.168.1.50-60
+                    start_ip = ipaddress.ip_address(start_str)
+                    base_ip_parts = start_str.split(".")
+                    start_num = int(base_ip_parts[-1])
+                    end_num = int(end_str)
+                    prefix = ".".join(base_ip_parts[:-1])
+                    for i in range(start_num, end_num + 1):
+                        ips.append(f"{prefix}.{i}")
+            except Exception:
+                pass
+        else:
+            # Single IP
+            try:
+                ipaddress.ip_address(entry)
+                ips.append(entry)
+            except Exception:
+                pass
+    return list(dict.fromkeys(ips)) # remove duplicates
 
 @app.on_event("startup")
 def startup_db_init():
@@ -79,32 +138,65 @@ def get_nodes(db: Session = Depends(get_db)):
 @app.post("/api/nodes", status_code=status.HTTP_201_CREATED)
 def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db)):
     """
-    Registers a new node and triggers its background bootstrap process.
+    Registers one or more new nodes (by parsing comma-separated, ranges, or CIDR)
+    and triggers their background bootstrap tasks.
     """
-    # Check duplicate
-    existing = db.query(models.Node).filter(
-        (models.Node.hostname == payload.hostname) | 
-        (models.Node.ip_address == payload.ip_address)
-    ).first()
-    if existing:
+    ips = parse_ip_input(payload.ip_address)
+    if not ips:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Node with this hostname or IP address already exists."
+            detail="No valid IP addresses, ranges, or CIDR blocks could be parsed from input."
         )
 
-    node = models.Node(
-        hostname=payload.hostname,
-        ip_address=payload.ip_address,
-        ssh_port=payload.ssh_port,
-        status="NEEDS_BOOTSTRAP"
-    )
-    db.add(node)
-    db.commit()
-    db.refresh(node)
+    created_nodes = []
+    task_ids = []
+    node_ids = []
 
-    # Spawn bootstrap Celery task
-    task = run_bootstrap_task.delay(node.id, payload.bootstrap_password, payload.bootstrap_user)
-    return {"message": "Node registered successfully. Bootstrap triggered.", "task_id": task.id, "node_id": node.id}
+    for idx, ip in enumerate(ips):
+        # Determine hostname suffix
+        current_hostname = payload.hostname if len(ips) == 1 else f"{payload.hostname}-{idx+1}"
+
+        # Check duplicate
+        existing = db.query(models.Node).filter(
+            (models.Node.hostname == current_hostname) | 
+            (models.Node.ip_address == ip)
+        ).first()
+        
+        if existing:
+            # Skip duplicates to allow partial successes in range additions
+            continue
+
+        node = models.Node(
+            hostname=current_hostname,
+            ip_address=ip,
+            ssh_port=payload.ssh_port,
+            status="NEEDS_BOOTSTRAP"
+        )
+        db.add(node)
+        db.commit()
+        db.refresh(node)
+
+        # Spawn bootstrap task
+        task = run_bootstrap_task.delay(node.id, payload.bootstrap_password, payload.bootstrap_user)
+        
+        created_nodes.append(node)
+        task_ids.append(task.id)
+        node_ids.append(node.id)
+
+    if not created_nodes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="All parsed nodes already exist in the database."
+        )
+
+    # Return the first task_id and node_id so the frontend logs drawer triggers immediately
+    return {
+        "message": f"Successfully registered {len(created_nodes)} node(s). Bootstrap triggered.",
+        "task_id": task_ids[0],
+        "node_id": node_ids[0],
+        "all_task_ids": task_ids,
+        "all_node_ids": node_ids
+    }
 
 
 @app.post("/api/nodes/{node_id}/prepare")

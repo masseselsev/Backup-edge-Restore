@@ -67,3 +67,25 @@ def test_create_node_with_uuid(db_session):
     assert retrieved is not None
     assert retrieved.ip_address == "192.168.1.50"
     assert retrieved.efi_uuid == "4F2E-3A5B"
+
+def test_parse_ip_input():
+    """
+    Test parsing lists, ranges, and CIDR blocks into single IP strings.
+    """
+    from main import parse_ip_input
+
+    # Test single
+    assert parse_ip_input("192.168.1.100") == ["192.168.1.100"]
+
+    # Test comma-separated list
+    assert parse_ip_input("192.168.1.100, 192.168.1.101") == ["192.168.1.100", "192.168.1.101"]
+
+    # Test range (short)
+    assert parse_ip_input("192.168.1.50-52") == ["192.168.1.50", "192.168.1.51", "192.168.1.52"]
+
+    # Test range (long)
+    assert parse_ip_input("10.0.0.1-10.0.0.3") == ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
+
+    # Test CIDR
+    assert parse_ip_input("192.168.1.0/30") == ["192.168.1.1", "192.168.1.2"]
+

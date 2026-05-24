@@ -25,9 +25,9 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
   // Form State
   const [hostname, setHostname] = useState('');
   const [ipAddress, setIpAddress] = useState('');
-  const [sshPort, setSshPort] = useState(22);
-  const [username, setUsername] = useState('root');
-  const [password, setPassword] = useState('');
+  const [sshPort, setSshPort] = useState(2222);
+  const [username, setUsername] = useState('user');
+  const [password, setPassword] = useState('admin');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -218,7 +218,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
                 <input
                   type="text"
                   required
-                  placeholder="192.168.1.100"
+                  placeholder="e.g. 192.168.1.10, 192.168.1.50-60, 192.168.2.0/24"
                   value={ipAddress}
                   onChange={(e) => setIpAddress(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
