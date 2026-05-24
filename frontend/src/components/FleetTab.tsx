@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, Terminal, AlertTriangle } from 'lucide-react';
+import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, Terminal, AlertTriangle, Trash2 } from 'lucide-react';
 
 interface Node {
   id: number;
@@ -109,6 +109,22 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
     }
   };
 
+  const handleDeleteNode = async (nodeId: number, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete node "${name}"? This will also remove its backup history.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/nodes/${nodeId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to delete node');
+      }
+      fetchNodes();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'READY':
@@ -174,7 +190,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
                   <td className="px-6 py-4 text-zinc-400">
                     {node.last_backup ? new Date(node.last_backup).toLocaleString() : 'Never'}
                   </td>
-                  <td className="px-6 py-4 text-right space-x-2">
+                  <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                     <button
                       onClick={() => runPrepare(node.id, node.hostname)}
                       disabled={node.status === 'NEEDS_BOOTSTRAP' || node.status === 'OFFLINE'}
@@ -188,6 +204,13 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
                       className="px-3 py-1.5 text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/20 disabled:opacity-30 transition-colors"
                     >
                       Backup Now
+                    </button>
+                    <button
+                      onClick={() => handleDeleteNode(node.id, node.hostname)}
+                      className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/20 transition-colors"
+                      title="Delete Node"
+                    >
+                      <Trash2 size={14} />
                     </button>
                   </td>
                 </tr>

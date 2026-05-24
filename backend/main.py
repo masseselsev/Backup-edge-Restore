@@ -349,6 +349,22 @@ def trigger_restore(payload: schemas.RestoreRequest, db: Session = Depends(get_d
     return {"message": "Restore flashing process started.", "task_id": task.id}
 
 
+@app.delete("/api/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_node(node_id: int, db: Session = Depends(get_db)):
+    """
+    Deletes a node and its related backup history records from the database.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    
+    # Delete related backup histories first to prevent foreign key errors
+    db.query(models.BackupHistory).filter(models.BackupHistory.node_id == node_id).delete()
+    
+    db.delete(node)
+    db.commit()
+
+
 @app.get("/api/stats")
 def get_global_stats(db: Session = Depends(get_db)):
     """
