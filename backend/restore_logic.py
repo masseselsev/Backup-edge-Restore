@@ -31,9 +31,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
 
     # Double check if EFI UUID is collected
     if not node.efi_uuid:
-        log_to_task(task_id, "ERROR: EFI partition UUID is missing from database. Aborting restore to prevent data loss.")
-        task_log.status = "FAILED"
-        db.commit()
+        log_to_task(task_id, "ERROR: EFI partition UUID is missing from database. Aborting restore to prevent data loss.", status="FAILED")
         db.close()
         return {"status": "FAILED", "error": "Missing EFI UUID"}
 
@@ -210,16 +208,12 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         log_to_task(task_id, "Unmounting virtual filesystems...")
         subprocess.check_call(["umount", "-R", target_mnt])
 
-        task_log.status = "SUCCESS"
-        db.commit()
-        log_to_task(task_id, "Restore completed successfully! Target device ready to boot.")
+        log_to_task(task_id, "Restore completed successfully! Target device ready to boot.", status="SUCCESS")
         return {"status": "SUCCESS"}
 
     except Exception as e:
         error_msg = f"Restore execution failed: {str(e)}"
-        log_to_task(task_id, error_msg)
-        task_log.status = "FAILED"
-        db.commit()
+        log_to_task(task_id, error_msg, status="FAILED")
 
         # Clean unmount on failure
         try:

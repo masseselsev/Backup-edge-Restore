@@ -31,13 +31,14 @@ celery_app.conf.beat_schedule = {
 }
 celery_app.conf.timezone = 'UTC'
 
-def log_to_task(task_id: str, message: str) -> None:
+def log_to_task(task_id: str, message: str, status: Optional[str] = None) -> None:
     """
     Appends a log line to the specified TaskLog record in the database.
 
     Args:
         task_id: The TaskLog UUID.
         message: The log message to append.
+        status: Optional status to explicitly set (e.g. SUCCESS, FAILED).
     """
     db: Session = SessionLocal()
     try:
@@ -45,7 +46,10 @@ def log_to_task(task_id: str, message: str) -> None:
         if task:
             timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
             task.log_output += f"[{timestamp}] {message}\n"
-            task.status = "RUNNING"
+            if status:
+                task.status = status
+            elif task.status not in ("SUCCESS", "FAILED"):
+                task.status = "RUNNING"
             db.commit()
     except Exception as e:
         logger.error(f"Error logging to task {task_id}: {str(e)}")
@@ -107,13 +111,13 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
             entry = f"{command_restriction}{ssh_pub_key}\n"
             with open(authorized_keys_path, "a") as f:
                 f.write(entry)
-            log_to_task(task_id, "Borg SSH authorized_keys updated with forced command restriction.")
+            log_to_task(task_id, "Borg SSH authorized_keys updated with forced command restriction.", status="SUCCESS")
         except Exception as e:
-            log_to_task(task_id, f"WARNING: Failed to append key to authorized_keys: {str(e)}")
+            log_to_task(task_id, f"WARNING: Failed to append key to authorized_keys: {str(e)}", status="FAILED")
     else:
         node.status = "NEEDS_BOOTSTRAP"
         db.commit()
-        log_to_task(task_id, "Bootstrap task failed.")
+        log_to_task(task_id, "Bootstrap task failed.", status="FAILED")
 
     db.close()
     return res
@@ -159,11 +163,11 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
         node.efi_uuid = res["parsed_data"].get("efi_uuid")
         node.status = "READY"
         db.commit()
-        log_to_task(task_id, f"Auto-prepare finished. Disk type: {node.disk_type}, EFI UUID: {node.efi_uuid}, Interface: {node.network_iface}")
+        log_to_task(task_id, f"Auto-prepare finished. Disk type: {node.disk_type}, EFI UUID: {node.efi_uuid}, Interface: {node.network_iface}", status="SUCCESS")
     else:
         node.status = "NEEDS_FIX"
         db.commit()
-        log_to_task(task_id, "Auto-prepare task failed.")
+        log_to_task(task_id, "Auto-prepare task failed.", status="FAILED")
 
     db.close()
     return res
@@ -254,7 +258,7 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
             node.last_backup = datetime.utcnow()
             db.commit()
 
-            log_to_task(task_id, "Backup completed successfully.")
+            log_to_task(task_id, "Backup completed successfully.", status="SUCCESS")
             return {"status": "SUCCESS", "archive": archive_name}
         else:
             history = BackupHistory(
@@ -267,10 +271,10 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
             )
             db.add(history)
             db.commit()
-            log_to_task(task_id, "Backup execution failed.")
+            log_to_task(task_id, "Backup execution failed.", status="FAILED")
             return {"status": "FAILED", "error": stderr}
     except Exception as e:
-        log_to_task(task_id, f"Exception occurred during backup task: {str(e)}")
+        log_to_task(task_id, f"Exception occurred during backup task: {str(e)}", status="FAILED")
         return {"status": "FAILED", "error": str(e)}
     finally:
         db.close()
