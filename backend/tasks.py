@@ -267,7 +267,7 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
-        f"sudo -u borg BORG_RSH='ssh -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg init --encryption=repokey {borg_repo_url}"
+        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg init --encryption=repokey {borg_repo_url}"
     ]
     log_to_task(task_id, "Checking/Initializing Borg repository...")
     try:
@@ -290,7 +290,7 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
-        f"sudo -u borg BORG_RSH='ssh -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg create --json --stats {borg_repo_url}::{archive_name} / {exclude_str}"
+        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg create --json --stats {borg_repo_url}::{archive_name} / {exclude_str}"
     ]
 
     log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
