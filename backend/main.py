@@ -260,14 +260,55 @@ def scan_devices():
     """
     devices = []
     try:
-        # Detect orchestrator host's root drive parent
-        findmnt_out = subprocess.check_output("findmnt -n -o SOURCE /", shell=True, text=True).strip()
-        # e.g., /dev/sda3 -> sda, /dev/nvme0n1p2 -> nvme0n1
-        host_root_disk = os.path.basename(findmnt_out)
-        if "nvme" in host_root_disk:
-            host_root_disk = host_root_disk.split("p")[0]
-        else:
-            host_root_disk = "".join([c for c in host_root_disk if not c.isdigit()])
+        # Resolve parent physical disks of the container's volume mounts to filter them out
+        host_root_disks = set()
+        
+        # We try to detect the physical disk where /app, /root/.ssh, or /data/borg reside
+        for mp in ["/app", "/root/.ssh", "/data/borg", "/"]:
+            app_dev = None
+            if os.path.exists("/proc/self/mountinfo"):
+                with open("/proc/self/mountinfo", "r") as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if len(parts) >= 5 and parts[4] == mp:
+                            app_dev = parts[2]
+                            break
+            if app_dev:
+                try:
+                    sys_path = os.path.realpath(f"/sys/dev/block/{app_dev}")
+                    block_name = os.path.basename(sys_path)
+                    
+                    def resolve_physical_disks(name):
+                        slaves_path = f"/sys/block/{name}/slaves"
+                        if os.path.exists(slaves_path) and os.listdir(slaves_path):
+                            for slave in os.listdir(slaves_path):
+                                resolve_physical_disks(slave)
+                        else:
+                            real_path = os.path.realpath(f"/sys/class/block/{name}")
+                            parts = real_path.split("/")
+                            if "block" in parts:
+                                idx = parts.index("block")
+                                if idx + 1 < len(parts):
+                                    host_root_disks.add(parts[idx+1])
+                            else:
+                                host_root_disks.add(name)
+
+                    resolve_physical_disks(block_name)
+                except Exception:
+                    pass
+
+        # Also fallback to basic findmnt detection if possible
+        try:
+            findmnt_out = subprocess.check_output("findmnt -n -o SOURCE /", shell=True, text=True).strip()
+            host_root_disk = os.path.basename(findmnt_out)
+            if host_root_disk != "overlay":
+                if "nvme" in host_root_disk:
+                    host_root_disk = host_root_disk.split("p")[0]
+                else:
+                    host_root_disk = "".join([c for c in host_root_disk if not c.isdigit()])
+                host_root_disks.add(host_root_disk)
+        except Exception:
+            pass
 
         # Run lsblk to list devices
         lsblk_cmd = "lsblk -dno NAME,SIZE,MODEL,RO || lsblk -dno NAME,SIZE,MODEL"
@@ -281,8 +322,8 @@ def scan_devices():
             size_str = parts[1].strip()
             model = parts[2].strip() if len(parts) > 2 else "Generic Disk"
 
-            # Skip loop and host root drives
-            if name.startswith("loop") or name.startswith("ram") or name == host_root_disk:
+            # Skip loop, ram, and host root drives
+            if name.startswith("loop") or name.startswith("ram") or name in host_root_disks:
                 continue
 
             # Check rotational flag
