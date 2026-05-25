@@ -136,9 +136,14 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     if res["status"] == "SUCCESS":
         ssh_pub_key = res["parsed_data"].get("ssh_pub_key")
         node.ssh_pub_key = ssh_pub_key
-        node.status = "NEEDS_FIX" # Proceed to Auto-Prepare stage next
+        is_prep = res["parsed_data"].get("prepared") == "true"
+        if is_prep:
+            node.disk_type = res["parsed_data"].get("disk_type", "UNKNOWN")
+            node.network_iface = res["parsed_data"].get("network_iface")
+            node.efi_uuid = res["parsed_data"].get("efi_uuid")
+        node.status = "READY" if is_prep else "NEEDS_FIX"
         db.commit()
-        log_to_task(task_id, "Bootstrap completed successfully. Public SSH key fetched.")
+        log_to_task(task_id, f"Bootstrap completed. {'Already prepared.' if is_prep else 'Key fetched.'}")
 
         # Append key to Borg Server authorized_keys
         try:

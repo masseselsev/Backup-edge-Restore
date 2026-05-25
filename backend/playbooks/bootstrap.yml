@@ -71,3 +71,50 @@
         name: ssh
         state: restarted
       when: ssh_config_updated.changed
+
+    - name: Gather partition and system details
+      shell: |
+        set -e
+        root_part=$(findmnt -n -o SOURCE /)
+        root_disk=$(lsblk -no PKNAME "$root_part")
+        if [ -z "$root_disk" ]; then
+          root_disk=$(echo "$root_part" | sed -E 's/p[0-9]+$//')
+        fi
+        disk_base=$(basename "$root_disk")
+        rotational=$(cat /sys/block/"$disk_base"/queue/rotational)
+        disk_type="SATA"
+        if [ "$rotational" = "0" ]; then
+          disk_type="NVME"
+        fi
+
+        net_iface=$(ip -o route get 8.8.8.8 | awk '{print $5}')
+
+        efi_part=$(findmnt -n -o SOURCE /boot/efi || findmnt -n -o SOURCE /boot || echo "")
+        efi_uuid=""
+        if [ -n "$efi_part" ]; then
+          efi_uuid=$(blkid -s UUID -o value "$efi_part" || echo "")
+        fi
+
+        root_label=$(e2label "$root_part" 2>/dev/null || echo "")
+        efi_label=""
+        if [ -n "$efi_part" ]; then
+          efi_label=$(fatlabel "$efi_part" 2>/dev/null || dosfslabel "$efi_part" 2>/dev/null || echo "")
+        fi
+
+        prepared="false"
+        if [ "$root_label" = "edgeroot" ]; then
+          if [ -z "$efi_part" ] || [ "$efi_label" = "edgeboot" ]; then
+            prepared="true"
+          fi
+        fi
+
+        echo "DISK_TYPE:$disk_type"
+        echo "EFI_UUID:$efi_uuid"
+        echo "INTERFACE:$net_iface"
+        echo "PREPARED:$prepared"
+      register: sys_info
+      changed_when: false
+
+    - name: Return system info to orchestrator
+      debug:
+        msg: "{{ sys_info.stdout_lines }}"

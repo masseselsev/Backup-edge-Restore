@@ -104,6 +104,8 @@ def run_ansible_playbook(
                     parsed_data["efi_uuid"] = line.split("EFI_UUID:")[1].strip()
                 if "INTERFACE:" in line:
                     parsed_data["network_iface"] = line.split("INTERFACE:")[1].strip()
+                if "PREPARED:" in line:
+                    parsed_data["prepared"] = line.split("PREPARED:")[1].strip()
 
                 # Periodic write to DB to avoid overloading database connections
                 if len(log_accumulator) % 5 == 0:
