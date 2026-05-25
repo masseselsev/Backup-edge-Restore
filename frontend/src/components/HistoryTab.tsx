@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Database, TrendingDown, ArrowDownCircle, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, X, Loader2 } from 'lucide-react';
 
 interface Stats {
   total_nodes: number;
@@ -28,8 +28,10 @@ export default function HistoryTab() {
   const [history, setHistory] = useState<BackupHistory[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
+  const [purgeTarget, setPurgeTarget] = useState<Node | null>(null);
+  const [purging, setPurging] = useState<Record<number, boolean>>({});
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const statsRes = await fetch('/api/stats');
       const statsData = await statsRes.json();
@@ -54,11 +56,43 @@ export default function HistoryTab() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchStats();
-  }, []);
+  }, [fetchStats]);
+
+  const handlePurge = async (node: Node) => {
+    setPurgeTarget(null);
+    setPurging(prev => ({ ...prev, [node.id]: true }));
+    try {
+      const res = await fetch(`/api/nodes/${node.id}/archives`, { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        // Poll task status until completion
+        if (data.task_id) {
+          const pollInterval = setInterval(async () => {
+            try {
+              const taskRes = await fetch(`/api/tasks/${data.task_id}`);
+              const taskData = await taskRes.json();
+              if (taskData.status === 'SUCCESS' || taskData.status === 'FAILED') {
+                clearInterval(pollInterval);
+                setPurging(prev => ({ ...prev, [node.id]: false }));
+                fetchStats();
+              }
+            } catch {
+              clearInterval(pollInterval);
+              setPurging(prev => ({ ...prev, [node.id]: false }));
+            }
+          }, 2000);
+        }
+      } else {
+        setPurging(prev => ({ ...prev, [node.id]: false }));
+      }
+    } catch {
+      setPurging(prev => ({ ...prev, [node.id]: false }));
+    }
+  };
 
   const getFormatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -79,8 +113,53 @@ export default function HistoryTab() {
     return getFormatSize(Math.max(0, diff));
   };
 
+  // Group history by node
+  const groupedHistory: Record<number, BackupHistory[]> = {};
+  for (const h of history) {
+    if (!groupedHistory[h.node_id]) groupedHistory[h.node_id] = [];
+    groupedHistory[h.node_id].push(h);
+  }
+
+  // List of nodes that actually have history (for rendering groups)
+  const nodesWithHistory = nodes.filter(n => groupedHistory[n.id]?.length);
+
   return (
     <div className="space-y-6">
+      {/* Confirmation Modal */}
+      {purgeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-rose-500/10 rounded-xl border border-rose-500/20">
+                <AlertTriangle className="text-rose-400" size={22} />
+              </div>
+              <h3 className="text-lg font-bold text-white">Confirm Purge</h3>
+            </div>
+            <p className="text-sm text-zinc-300 mb-1">
+              You are about to delete <strong className="text-white">all backup archives</strong> for:
+            </p>
+            <p className="text-base font-semibold text-rose-400 mb-3">{purgeTarget.hostname}</p>
+            <p className="text-xs text-zinc-500 mb-6">
+              The Borg repository will remain initialized. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setPurgeTarget(null)}
+                className="px-4 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handlePurge(purgeTarget)}
+                className="px-4 py-2 text-sm rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors"
+              >
+                Purge All Archives
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center gap-4">
@@ -123,7 +202,7 @@ export default function HistoryTab() {
         </div>
       </div>
 
-      {/* History log list */}
+      {/* History log grouped by node */}
       <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
         <div className="flex justify-between items-center">
           <div>
@@ -138,48 +217,69 @@ export default function HistoryTab() {
           </button>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-zinc-800/80 bg-zinc-950">
-          <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
-            <thead className="bg-zinc-900 text-zinc-400 uppercase tracking-wider font-semibold">
-              <tr>
-                <th className="px-6 py-3.5">Archive Snapshot</th>
-                <th className="px-6 py-3.5">Origin Node</th>
-                <th className="px-6 py-3.5">Date & Time</th>
-                <th className="px-6 py-3.5">Original Size</th>
-                <th className="px-6 py-3.5">Deduplicated Size</th>
-                <th className="px-6 py-3.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-zinc-500">Loading history records...</td>
-                </tr>
-              ) : history.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-zinc-500">No backup records found.</td>
-                </tr>
-              ) : (
-                history.map((h) => (
-                  <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-white">{h.archive_name}</td>
-                    <td className="px-6 py-4 text-zinc-400">{getNodeName(h.node_id)}</td>
-                    <td className="px-6 py-4 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-zinc-300">{getFormatSize(h.original_size)}</td>
-                    <td className="px-6 py-4 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
-                    <td className="px-6 py-4">
-                      {h.status === 'SUCCESS' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="text-center py-8 text-zinc-500 text-sm">Loading history records...</div>
+        ) : history.length === 0 ? (
+          <div className="text-center py-8 text-zinc-500 text-sm">No backup records found.</div>
+        ) : (
+          nodesWithHistory.map(node => (
+            <div key={node.id} className="space-y-2">
+              {/* Node group header */}
+              <div className="flex items-center justify-between px-2 pt-3">
+                <h4 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                  <Database size={14} className="text-zinc-500" />
+                  {node.hostname}
+                  <span className="text-xs text-zinc-500 font-normal">
+                    — {groupedHistory[node.id].length} archive(s)
+                  </span>
+                </h4>
+                <button
+                  onClick={() => setPurgeTarget(node)}
+                  disabled={!!purging[node.id]}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {purging[node.id] ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={13} />
+                  )}
+                  {purging[node.id] ? 'Purging...' : 'Purge All'}
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-zinc-800/80 bg-zinc-950">
+                <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
+                  <thead className="bg-zinc-900 text-zinc-400 uppercase tracking-wider font-semibold">
+                    <tr>
+                      <th className="px-6 py-3.5">Archive Snapshot</th>
+                      <th className="px-6 py-3.5">Date & Time</th>
+                      <th className="px-6 py-3.5">Original Size</th>
+                      <th className="px-6 py-3.5">Deduplicated Size</th>
+                      <th className="px-6 py-3.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800">
+                    {groupedHistory[node.id].map(h => (
+                      <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
+                        <td className="px-6 py-4 font-semibold text-white">{h.archive_name}</td>
+                        <td className="px-6 py-4 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-zinc-300">{getFormatSize(h.original_size)}</td>
+                        <td className="px-6 py-4 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
+                        <td className="px-6 py-4">
+                          {h.status === 'SUCCESS' ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

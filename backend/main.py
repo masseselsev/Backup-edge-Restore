@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 import schemas
-from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, flash_restore_device, ensure_orchestrator_ssh_key
+from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, flash_restore_device, ensure_orchestrator_ssh_key, purge_node_archives
 
 app = FastAPI(title="Borg Backup & Bare-Metal Restore Orchestrator API")
 
@@ -402,6 +402,20 @@ def trigger_restore(payload: schemas.RestoreRequest, db: Session = Depends(get_d
 
     task = flash_restore_device.delay(node.id, payload.archive_name, payload.target_dev)
     return {"message": "Restore flashing process started.", "task_id": task.id}
+
+
+@app.delete("/api/nodes/{node_id}/archives")
+def purge_node_backups(node_id: int, db: Session = Depends(get_db)):
+    """
+    Deletes all Borg backup archives for a specific node.
+    The Borg repository itself is preserved (initialization is kept).
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+
+    task = purge_node_archives.delay(node.id)
+    return {"message": f"Purge of all archives for '{node.hostname}' started.", "task_id": task.id}
 
 
 @app.delete("/api/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)

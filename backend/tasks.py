@@ -413,3 +413,83 @@ def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str)
     """
     from restore_logic import execute_restore
     return execute_restore(self, node_id, archive_name, target_dev)
+
+@celery_app.task(bind=True)
+def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
+    """
+    Celery task to delete all Borg archives for a specific node.
+    Preserves the initialized repository — only removes archive snapshots.
+    Also cleans up related BackupHistory records from the database.
+
+    Args:
+        node_id: ID of the Node database record.
+
+    Returns:
+        Status result dictionary.
+    """
+    task_id = self.request.id
+    db: Session = SessionLocal()
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        db.close()
+        return {"status": "FAILED", "error": "Node not found"}
+
+    task_log = TaskLog(id=task_id, task_type="PURGE", status="RUNNING", log_output="")
+    db.add(task_log)
+    db.commit()
+
+    repo_path = f"/data/borg/{node.hostname}"
+    log_to_task(task_id, f"Starting archive purge for node {node.hostname}...")
+
+    env = os.environ.copy()
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+
+    try:
+        # List all archives in the repository
+        list_cmd = ["borg", "list", "--json", repo_path]
+        list_res = subprocess.run(list_cmd, env=env, capture_output=True, text=True)
+
+        if list_res.returncode != 0:
+            log_to_task(task_id, f"Failed to list archives: {list_res.stderr}", status="FAILED")
+            db.close()
+            return {"status": "FAILED", "error": list_res.stderr}
+
+        archives = json.loads(list_res.stdout).get("archives", [])
+        log_to_task(task_id, f"Found {len(archives)} archive(s) to delete.")
+
+        if not archives:
+            log_to_task(task_id, "No archives to purge.", status="SUCCESS")
+            db.close()
+            return {"status": "SUCCESS", "deleted": 0}
+
+        # Delete each archive individually
+        deleted_count = 0
+        for archive in archives:
+            name = archive["name"]
+            del_cmd = ["borg", "delete", f"{repo_path}::{name}"]
+            del_res = subprocess.run(del_cmd, env=env, capture_output=True, text=True)
+            if del_res.returncode == 0:
+                deleted_count += 1
+                log_to_task(task_id, f"Deleted archive: {name}")
+            else:
+                log_to_task(task_id, f"Failed to delete archive {name}: {del_res.stderr}")
+
+        # Clean up database history records for this node
+        purged_rows = db.query(BackupHistory).filter(
+            BackupHistory.node_id == node_id
+        ).delete()
+        node.last_backup = None
+        db.commit()
+
+        log_to_task(
+            task_id,
+            f"Purge complete: {deleted_count}/{len(archives)} archives deleted, "
+            f"{purged_rows} DB records removed.",
+            status="SUCCESS"
+        )
+        return {"status": "SUCCESS", "deleted": deleted_count}
+    except Exception as e:
+        log_to_task(task_id, f"Exception during purge: {str(e)}", status="FAILED")
+        return {"status": "FAILED", "error": str(e)}
+    finally:
+        db.close()
