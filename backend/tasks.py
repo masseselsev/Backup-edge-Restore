@@ -311,8 +311,9 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
             deduplicated_size = 0
             try:
                 data = json.loads(stdout)
-                original_size = data.get("stats", {}).get("original_size", 0)
-                deduplicated_size = data.get("stats", {}).get("deduplicated_size", 0)
+                archive_stats = data.get("archive", {}).get("stats", {})
+                original_size = archive_stats.get("original_size", 0)
+                deduplicated_size = archive_stats.get("deduplicated_size", 0)
             except Exception:
                 # If stdout is not direct JSON but includes logs, search for lines
                 log_to_task(task_id, "Failed to parse JSON directly; estimating size metrics.")
