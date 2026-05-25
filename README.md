@@ -135,6 +135,25 @@ docker compose exec backend alembic upgrade head
 
 ---
 
+## 🔌 Hardware & Host Storage Stability
+
+When performing bare-metal restore operations on target USB flash drives or external drives through USB-to-SATA/NVMe bridges (e.g., JMicron controllers like `152d:0581`), the default Linux **UAS (USB Attached SCSI)** driver might crash or reset under heavy concurrent queue write loads (like `borg extract`). This causes the disk to hang and locks the flashing process in an uninterruptible `D` (I/O wait) state.
+
+To guarantee host platform stability during bulk bare-metal flashing:
+
+1. **Configure USB Storage Quirks** on the host machine to bypass the buggy `uas` driver and force the ultra-stable legacy `usb-storage` path:
+   ```bash
+   echo -e "options usb-storage quirks=152d:0581:u\noptions uas quirks=152d:0581:u" | sudo tee /etc/modprobe.d/usb-quirks.conf
+   ```
+   *(Replace `152d:0581` with the respective Vendor:Product ID of your USB-to-SATA bridge found in `lsusb` if different).*
+
+2. **Re-plug the USB Drive** to apply the rule, or reset the USB bus programmatically using the host's `usbreset` utility:
+   ```bash
+   sudo usbreset 152d:0581
+   ```
+
+---
+
 ## 📝 Development Guidelines (GEMINI.md Rules)
 - **Type Hinting**: All Python routes and schemas must use Pydantic models for request/response serialization.
 - **Maximum File Size**: No single source file must exceed **500 lines**. Routers, tasks, and components must be modularly split (e.g., `tasks.py` split into `restore_logic.py`).
