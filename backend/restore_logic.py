@@ -113,11 +113,11 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             elif fstype == "ext2":
                 subprocess.check_call(["mkfs.ext2", "-F", "-L", label, part_dev])
             elif fstype == "ext4":
-                subprocess.check_call(["mkfs.ext4", "-F", "-L", label, part_dev])
+                subprocess.check_call(["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-F", "-L", label, part_dev])
             elif fstype == "xfs":
                 subprocess.check_call(["mkfs.xfs", "-f", "-L", label, part_dev])
             else:
-                subprocess.check_call(["mkfs.ext4", "-F", "-L", label, part_dev])
+                subprocess.check_call(["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-F", "-L", label, part_dev])
 
         # 5. Mounting partitions hierarchically
         target_mnt = "/mnt/target"
