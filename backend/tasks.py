@@ -303,7 +303,9 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
         if stderr:
             log_to_task(task_id, f"Remote execution stderr:\n{stderr}")
 
-        if process.returncode == 0:
+        if process.returncode in (0, 1):
+            if process.returncode == 1:
+                log_to_task(task_id, "WARNING: Backup completed with warnings (some files changed during backup or were skipped).")
             # Parse sizes from JSON
             original_size = 0
             deduplicated_size = 0
