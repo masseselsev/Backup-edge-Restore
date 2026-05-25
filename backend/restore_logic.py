@@ -111,13 +111,29 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
                 clean_efi_uuid = (uuid or node.efi_uuid or "458C-37BB").replace("-", "")[:8]
                 subprocess.check_call(["mkfs.vfat", "-F32", "-i", clean_efi_uuid, "-n", label, part_dev])
             elif fstype == "ext2":
-                subprocess.check_call(["mkfs.ext2", "-F", "-L", label, part_dev])
+                cmd = ["mkfs.ext2", "-F", "-L", label]
+                if uuid:
+                    cmd += ["-U", uuid]
+                cmd.append(part_dev)
+                subprocess.check_call(cmd)
             elif fstype == "ext4":
-                subprocess.check_call(["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-F", "-L", label, part_dev])
+                cmd = ["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-F", "-L", label]
+                if uuid:
+                    cmd += ["-U", uuid]
+                cmd.append(part_dev)
+                subprocess.check_call(cmd)
             elif fstype == "xfs":
-                subprocess.check_call(["mkfs.xfs", "-f", "-L", label, part_dev])
+                cmd = ["mkfs.xfs", "-f", "-L", label]
+                if uuid:
+                    cmd += ["-m", f"uuid={uuid}"]
+                cmd.append(part_dev)
+                subprocess.check_call(cmd)
             else:
-                subprocess.check_call(["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-F", "-L", label, part_dev])
+                cmd = ["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-F", "-L", label]
+                if uuid:
+                    cmd += ["-U", uuid]
+                cmd.append(part_dev)
+                subprocess.check_call(cmd)
 
         # 5. Mounting partitions hierarchically
         target_mnt = "/mnt/target"
