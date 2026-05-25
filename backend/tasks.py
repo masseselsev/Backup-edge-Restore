@@ -1,4 +1,11 @@
+import sys
 import os
+
+# Ensure /app is in sys.path for Celery prefork workers that may lose cwd context
+_app_dir = os.path.dirname(os.path.abspath(__file__))
+if _app_dir not in sys.path:
+    sys.path.insert(0, _app_dir)
+
 import shutil
 import subprocess
 import json
