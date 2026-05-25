@@ -275,13 +275,22 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
     except Exception as e:
         log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
 
+    # Format global exclusions correctly as multiple --exclude options
+    exclude_args = []
+    if settings.global_exclusions:
+        for x in settings.global_exclusions.split(","):
+            ex = x.strip()
+            if ex:
+                exclude_args.append(f"--exclude '{ex}'")
+    exclude_str = " ".join(exclude_args)
+
     # Connect via SSH to the edge node and execute Borg backup pushing to Central server
     ssh_cmd = [
         "ssh", "-o", "StrictHostKeyChecking=no",
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
-        f"sudo -u borg BORG_RSH='ssh -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg create --json --stats {borg_repo_url}::{archive_name} / --exclude {settings.global_exclusions}"
+        f"sudo -u borg BORG_RSH='ssh -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg create --json --stats {borg_repo_url}::{archive_name} / {exclude_str}"
     ]
 
     log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
