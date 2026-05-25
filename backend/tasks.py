@@ -71,24 +71,26 @@ def ensure_orchestrator_ssh_key() -> str:
     if not os.path.exists(priv_key):
         logger.info("Generating new Ed25519 keypair for Orchestrator...")
         try:
-            # Generate keypair
-            subprocess.run([
-                "ssh-keygen", "-t", "ed25519", "-N", "", "-f", priv_key
-            ], check=True, capture_output=True)
-            # Set permissions
+            subprocess.run(["ssh-keygen", "-t", "ed25519", "-N", "", "-f", priv_key], check=True, capture_output=True)
             os.chmod(ssh_dir, 0o700)
             os.chmod(priv_key, 0o600)
         except Exception as e:
             logger.error(f"Failed to generate SSH keypair: {str(e)}")
             raise e
-            
-    # Read public key
     try:
         with open(pub_key, "r") as f:
             return f.read().strip()
     except Exception as e:
         logger.error(f"Failed to read SSH public key: {str(e)}")
         raise e
+
+def fix_repo_permissions(repo_path: str) -> None:
+    """Ensures repository files are owned by user borg (1000:1000) for ssh write access."""
+    try:
+        if os.path.exists(repo_path):
+            subprocess.run(["chown", "-R", "1000:1000", repo_path], check=True)
+    except Exception as e:
+        logger.error(f"Failed to chown repo {repo_path}: {str(e)}")
 
 @celery_app.task(bind=True)
 def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: str) -> Dict[str, Any]:
@@ -110,21 +112,15 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         db.close()
         return {"status": "FAILED", "error": "Node not found"}
 
-    # Initialize TaskLog
     task_log = TaskLog(id=task_id, task_type="BOOTSTRAP", status="RUNNING", log_output="")
     db.add(task_log)
     db.commit()
-
     log_to_task(task_id, f"Starting bootstrap for {node.hostname} ({node.ip_address})")
-
-    # Ensure orchestrator SSH key is generated and get its public key
     try:
         orchestrator_pub_key = ensure_orchestrator_ssh_key()
     except Exception as e:
         log_to_task(task_id, f"WARNING: Failed to ensure orchestrator SSH key: {str(e)}")
         orchestrator_pub_key = ""
-
-    # Run playbook
     res = run_ansible_playbook(
         task_id=task_id,
         playbook_name="bootstrap.yml",
@@ -381,6 +377,7 @@ def global_daily_prune() -> Dict[str, Any]:
 
         try:
             res = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            fix_repo_permissions(repo_path)
             if res.returncode == 0:
                 results[node.hostname] = "PRUNED"
                 logger.info(f"Successfully pruned repository for {node.hostname}")
@@ -491,4 +488,5 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         log_to_task(task_id, f"Exception during purge: {str(e)}", status="FAILED")
         return {"status": "FAILED", "error": str(e)}
     finally:
+        fix_repo_permissions(repo_path)
         db.close()
