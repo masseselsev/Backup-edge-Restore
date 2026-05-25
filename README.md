@@ -90,10 +90,12 @@ BORG_PASSPHRASE=verysecureborgpassphrase
 DATABASE_URL=postgresql://postgres:securepassword@db:5432/borg_orchestrator
 ```
 
-### Step 2: Spin Up the Stack
-Run the following command to compile assets and start all services:
+### Step 2: Spin Up the Stack & Run Migrations
+Run the following commands to compile assets, start all services, and initialize the database schema:
 ```bash
 docker compose up -d --build
+# Wait a few seconds for the database to start, then run migrations:
+docker compose exec backend alembic upgrade head
 ```
 
 ### Step 3: Access Panels
