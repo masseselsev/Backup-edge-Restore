@@ -8,6 +8,7 @@ export default function SettingsTab() {
   const [keepWeekly, setKeepWeekly] = useState(4);
   const [keepMonthly, setKeepMonthly] = useState(6);
   const [globalExclusions, setGlobalExclusions] = useState('/dev/*,/proc/*,/sys/*,/run/*,/mnt/*');
+  const [orchestratorIp, setOrchestratorIp] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -23,6 +24,7 @@ export default function SettingsTab() {
         setKeepWeekly(data.keep_weekly);
         setKeepMonthly(data.keep_monthly);
         setGlobalExclusions(data.global_exclusions);
+        setOrchestratorIp(data.orchestrator_ip || '');
         setLoading(false);
       })
       .catch(e => {
@@ -45,7 +47,8 @@ export default function SettingsTab() {
           keep_daily: keepDaily,
           keep_weekly: keepWeekly,
           keep_monthly: keepMonthly,
-          global_exclusions: globalExclusions
+          global_exclusions: globalExclusions,
+          orchestrator_ip: orchestratorIp
         })
       });
       if (res.ok) {
@@ -129,6 +132,19 @@ export default function SettingsTab() {
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
               />
             </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Orchestrator IP Address (for nodes connection)</label>
+            <input
+              type="text"
+              value={orchestratorIp}
+              onChange={(e) => setOrchestratorIp(e.target.value)}
+              placeholder="e.g. 192.168.222.2 (leave blank to auto-detect)"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+            />
           </div>
         </div>
 

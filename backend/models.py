@@ -16,6 +16,7 @@ class Settings(Base):
     keep_weekly = Column(Integer, default=4, nullable=False)
     keep_monthly = Column(Integer, default=6, nullable=False)
     global_exclusions = Column(Text, default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*', nullable=False)
+    orchestrator_ip = Column(String, default='', nullable=False)
 
 
 class Node(Base):

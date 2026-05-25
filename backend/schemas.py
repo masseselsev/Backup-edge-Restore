@@ -9,6 +9,7 @@ class SettingsBase(BaseModel):
     keep_weekly: int = Field(default=4, ge=0)
     keep_monthly: int = Field(default=6, ge=0)
     global_exclusions: str = Field(default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*')
+    orchestrator_ip: str = Field(default='')
 
 class SettingsResponse(SettingsBase):
     id: int

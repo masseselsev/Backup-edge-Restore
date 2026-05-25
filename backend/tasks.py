@@ -247,9 +247,8 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
 
     log_to_task(task_id, f"Initiating Borg backup for {node.hostname}...")
 
-    # Determine Orchestrator internal/external IP from context or use host default route IP
-    # We can fetch this host's IP that routes to the edge node
-    orchestrator_ip = os.getenv("ORCHESTRATOR_IP")
+    # Determine Orchestrator internal/external IP from Settings, environment, or host default route IP
+    orchestrator_ip = settings.orchestrator_ip or os.getenv("ORCHESTRATOR_IP")
     if not orchestrator_ip:
         try:
             route_cmd = f"ip route get {node.ip_address}"
