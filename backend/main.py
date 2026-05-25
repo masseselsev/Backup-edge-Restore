@@ -333,6 +333,14 @@ def scan_devices():
                 with open(rotational_path, "r") as f:
                     rotational = f.read().strip() == "1"
 
+            # Check if connected via USB
+            is_usb = False
+            try:
+                real_block_path = os.path.realpath(f"/sys/block/{name}")
+                is_usb = any(part.startswith("usb") for part in real_block_path.split("/"))
+            except Exception:
+                pass
+
             # Disk Type classification
             disk_type = "NVME" if "nvme" in name else "SATA"
 
@@ -356,7 +364,8 @@ def scan_devices():
                 size=size_bytes,
                 model=model,
                 rotational=rotational,
-                disk_type=disk_type
+                disk_type=disk_type,
+                is_usb=is_usb
             ))
     except Exception as e:
         raise HTTPException(

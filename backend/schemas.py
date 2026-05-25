@@ -73,3 +73,5 @@ class DeviceResponse(BaseModel):
     model: str
     rotational: bool
     disk_type: str # SATA, NVME
+    is_usb: bool = False
+

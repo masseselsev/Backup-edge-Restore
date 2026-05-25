@@ -7,6 +7,7 @@ interface Device {
   model: string;
   rotational: boolean;
   disk_type: string;
+  is_usb?: boolean;
 }
 
 interface Node {
@@ -217,7 +218,7 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
                 <option value="">-- Choose Physical Target --</option>
                 {devices.map(d => (
                   <option key={d.name} value={d.name}>
-                    {d.name} - {d.model} ({getFormatSize(d.size)} - {d.disk_type} {d.rotational ? 'HDD' : 'SSD'})
+                    {d.name} - {d.model} ({getFormatSize(d.size)} - {d.disk_type} {d.rotational ? 'HDD' : 'SSD'}{d.is_usb ? ' [USB]' : ''})
                   </option>
                 ))}
               </select>
@@ -282,7 +283,14 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
               devices.map(d => (
                 <div key={d.name} className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl space-y-1">
                   <div className="flex justify-between text-xs font-bold text-white">
-                    <span>{d.name}</span>
+                    <span className="flex items-center gap-1.5">
+                      {d.name}
+                      {d.is_usb && (
+                        <span className="px-1.5 py-0.5 text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded font-semibold uppercase tracking-wider">
+                          USB
+                        </span>
+                      )}
+                    </span>
                     <span className="text-indigo-400">{d.disk_type}</span>
                   </div>
                   <div className="text-[11px] text-zinc-400 flex justify-between">
