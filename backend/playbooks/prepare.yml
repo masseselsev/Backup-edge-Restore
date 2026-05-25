@@ -3,7 +3,7 @@
   hosts: all
   become: yes
   tasks:
-    - name: Run prepare tasks in block to handle errors
+    - name: Run prepare tasks in block to handle errors and rollbacks
       block:
         - name: Backup remote fstab
           copy:
@@ -15,14 +15,22 @@
         - name: Gather partition and system details
           shell: |
             set -e
-            # Detect root partition and parent disk
-            root_part=$(findmnt -n -o SOURCE /)
-            root_disk=$(lsblk -no PKNAME "$root_part")
-            if [ -z "$root_disk" ]; then
-              # NVMe partitions might be like nvme0n1p2 -> nvme0n1
-              root_disk=$(echo "$root_part" | sed -E 's/p[0-9]+$//')
+            part_root=$(findmnt -n -o SOURCE /)
+            part_efi=$(findmnt -n -o SOURCE /boot/efi)
+            part_boot=$(findmnt -n -o SOURCE /boot)
+            part_log=$(findmnt -n -o SOURCE /var/log/edge)
+            part_stor=$(findmnt -n -o SOURCE /var/opt/edge)
+
+            if [ -z "$part_root" ] || [ -z "$part_efi" ] || [ -z "$part_boot" ] || [ -z "$part_log" ] || [ -z "$part_stor" ]; then
+              echo "ERROR: One or more of the 5 required partitions is not mounted!" >&2
+              exit 1
             fi
-            # Check rotational flag
+
+            # Detect root parent disk
+            root_disk=$(lsblk -no PKNAME "$part_root")
+            if [ -z "$root_disk" ]; then
+              root_disk=$(echo "$part_root" | sed -E 's/p[0-9]+$//')
+            fi
             disk_base=$(basename "$root_disk")
             rotational=$(cat /sys/block/"$disk_base"/queue/rotational)
             disk_type="SATA"
@@ -33,17 +41,21 @@
             # Find active network interface
             net_iface=$(ip -o route get 8.8.8.8 | awk '{print $5}')
 
-            # Detect EFI/ESP partition
-            efi_part=$(findmnt -n -o SOURCE /boot/efi || findmnt -n -o SOURCE /boot)
-            efi_uuid=""
-            if [ -n "$efi_part" ]; then
-              # Try blkid to get EFI UUID
-              efi_uuid=$(blkid -s UUID -o value "$efi_part")
+            # Read actual, live hardware UUID of the EFI partition
+            efi_uuid=$(blkid -s UUID -o value "$part_efi")
+            if [ -z "$efi_uuid" ]; then
+              echo "ERROR: Failed to retrieve EFI partition UUID!" >&2
+              exit 1
             fi
 
             echo "DISK_TYPE:$disk_type"
             echo "EFI_UUID:$efi_uuid"
             echo "INTERFACE:$net_iface"
+            echo "PART_ROOT:$part_root"
+            echo "PART_BOOT:$part_boot"
+            echo "PART_EFI:$part_efi"
+            echo "PART_LOG:$part_log"
+            echo "PART_STOR:$part_stor"
           register: sys_info
           changed_when: false
 
@@ -51,37 +63,78 @@
           debug:
             msg: "{{ sys_info.stdout_lines }}"
 
-        - name: Label root filesystem
-          shell: |
-            root_part=$(findmnt -n -o SOURCE /)
-            e2label "$root_part" edgeroot
-          changed_when: true
+        - name: Extract variables from gathered system info
+          set_fact:
+            disk_type: "{{ item.split('DISK_TYPE:')[1] }}"
+          with_items: "{{ sys_info.stdout_lines }}"
+          when: "'DISK_TYPE:' in item"
 
-        - name: Label EFI/ESP boot filesystem
-          shell: |
-            efi_part=$(findmnt -n -o SOURCE /boot/efi || findmnt -n -o SOURCE /boot)
-            if [ -n "$efi_part" ]; then
-              fatlabel "$efi_part" edgeboot || dosfslabel "$efi_part" edgeboot
-            fi
-          ignore_errors: yes
-          changed_when: true
+        - name: Extract efi_uuid
+          set_fact:
+            efi_uuid: "{{ item.split('EFI_UUID:')[1] }}"
+          with_items: "{{ sys_info.stdout_lines }}"
+          when: "'EFI_UUID:' in item"
 
-        - name: Rewrite fstab substituting with labels
+        - name: Extract part_root
+          set_fact:
+            part_root: "{{ item.split('PART_ROOT:')[1] }}"
+          with_items: "{{ sys_info.stdout_lines }}"
+          when: "'PART_ROOT:' in item"
+
+        - name: Extract part_boot
+          set_fact:
+            part_boot: "{{ item.split('PART_BOOT:')[1] }}"
+          with_items: "{{ sys_info.stdout_lines }}"
+          when: "'PART_BOOT:' in item"
+
+        - name: Extract part_log
+          set_fact:
+            part_log: "{{ item.split('PART_LOG:')[1] }}"
+          with_items: "{{ sys_info.stdout_lines }}"
+          when: "'PART_LOG:' in item"
+
+        - name: Extract part_stor
+          set_fact:
+            part_stor: "{{ item.split('PART_STOR:')[1] }}"
+          with_items: "{{ sys_info.stdout_lines }}"
+          when: "'PART_STOR:' in item"
+
+        - name: Rewrite target /etc/fstab with 5-line template
           copy:
             dest: /etc/fstab
             content: |
               # Standardized fstab via Borg Orchestrator Auto-Prepare
-              LABEL=edgeroot  /          ext4  defaults,noatime  0  1
-              LABEL=edgeboot  /boot/efi  vfat  defaults          0  2
+              LABEL=edgeroot   /               ext4    defaults,noatime                  0       1
+              UUID={{ efi_uuid }}  /boot/efi       vfat    umask=0077,defaults,noatime       0       1
+              LABEL=edgeboot   /boot           ext2    defaults,noatime                  0       2
+              LABEL=edgelog    /var/log/edge   ext4    defaults,noatime                  0       2
+              LABEL=edgestor   /var/opt/edge   ext4    defaults,noatime                  0       2
             mode: '0644'
 
-        - name: Update initramfs
-          command: update-initramfs -u
-          changed_when: true
+        - name: Reload systemd daemon
+          systemd:
+            daemon_reload: yes
+
+        - name: Verify mount configuration live
+          command: mount -a
 
         - name: Update GRUB bootloader configuration
           command: update-grub
-          changed_when: true
+
+        - name: Update initramfs
+          command: update-initramfs -u
+
+        - name: Label root filesystem
+          command: e2label "{{ part_root }}" edgeroot
+
+        - name: Label boot filesystem
+          command: e2label "{{ part_boot }}" edgeboot
+
+        - name: Label log filesystem
+          command: e2label "{{ part_log }}" edgelog
+
+        - name: Label storage filesystem
+          command: e2label "{{ part_stor }}" edgestor
 
       rescue:
         - name: Restore fstab from backup on failure
@@ -90,6 +143,15 @@
             dest: /etc/fstab
             remote_src: yes
             mode: '0644'
+          ignore_errors: yes
+
+        - name: Reload systemd daemon after rollback
+          systemd:
+            daemon_reload: yes
+          ignore_errors: yes
+
+        - name: Re-mount original filesystems
+          command: mount -a
           ignore_errors: yes
 
         - name: Fail task with error message

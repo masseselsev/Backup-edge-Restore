@@ -61,11 +61,17 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         subprocess.check_call(["parted", "-s", target_dev, "mklabel", "gpt"])
         subprocess.check_call(["parted", "-s", target_dev, "mkpart", "ESP", "fat32", "1MiB", "513MiB"])
         subprocess.check_call(["parted", "-s", target_dev, "set", "1", "esp", "on"])
-        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "root", "ext4", "513MiB", "100%"])
+        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "boot", "ext2", "513MiB", "1537MiB"])
+        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "root", "ext4", "1537MiB", "32257MiB"])
+        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "log", "ext4", "32257MiB", "37377MiB"])
+        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "storage", "ext4", "37377MiB", "100%"])
 
         # Determine partition device paths
         part1 = f"{target_dev}p1" if "nvme" in target_dev else f"{target_dev}1"
         part2 = f"{target_dev}p2" if "nvme" in target_dev else f"{target_dev}2"
+        part3 = f"{target_dev}p3" if "nvme" in target_dev else f"{target_dev}3"
+        part4 = f"{target_dev}p4" if "nvme" in target_dev else f"{target_dev}4"
+        part5 = f"{target_dev}p5" if "nvme" in target_dev else f"{target_dev}5"
 
         # Wait a moment for devices to settle
         subprocess.check_call(["udevadm", "settle"])
@@ -74,10 +80,19 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         # FAT32 UUID formatting for mkfs.vfat requires an 8-digit hexadecimal string (without dashes)
         clean_efi_uuid = node.efi_uuid.replace("-", "")[:8]
         log_to_task(task_id, f"Formatting ESP partition {part1} with UUID: {clean_efi_uuid}...")
-        subprocess.check_call(["mkfs.vfat", "-F32", "-i", clean_efi_uuid, "-n", "edgeboot", part1])
+        subprocess.check_call(["mkfs.vfat", "-F32", "-i", clean_efi_uuid, "-n", "EFI", part1])
 
-        log_to_task(task_id, f"Formatting root partition {part2} with label edgeroot...")
-        subprocess.check_call(["mkfs.ext4", "-F", "-L", "edgeroot", part2])
+        log_to_task(task_id, f"Formatting boot partition {part2} with label edgeboot...")
+        subprocess.check_call(["mkfs.ext2", "-F", "-L", "edgeboot", part2])
+
+        log_to_task(task_id, f"Formatting root partition {part3} with label edgeroot...")
+        subprocess.check_call(["mkfs.ext4", "-F", "-L", "edgeroot", part3])
+
+        log_to_task(task_id, f"Formatting log partition {part4} with label edgelog...")
+        subprocess.check_call(["mkfs.ext4", "-F", "-L", "edgelog", part4])
+
+        log_to_task(task_id, f"Formatting storage partition {part5} with label edgestor...")
+        subprocess.check_call(["mkfs.ext4", "-F", "-L", "edgestor", part5])
 
         # 5. Mounting partitions
         target_mnt = "/mnt/target"
@@ -86,12 +101,24 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             shutil.rmtree(target_mnt, ignore_errors=True)
 
         os.makedirs(target_mnt, exist_ok=True)
-        log_to_task(task_id, f"Mounting root filesystem to {target_mnt}...")
-        subprocess.check_call(["mount", part2, target_mnt])
+        log_to_task(task_id, f"Mounting root filesystem {part3} to {target_mnt}...")
+        subprocess.check_call(["mount", part3, target_mnt])
+
+        os.makedirs(f"{target_mnt}/boot", exist_ok=True)
+        log_to_task(task_id, f"Mounting boot filesystem {part2} to {target_mnt}/boot...")
+        subprocess.check_call(["mount", part2, f"{target_mnt}/boot"])
 
         os.makedirs(f"{target_mnt}/boot/efi", exist_ok=True)
-        log_to_task(task_id, f"Mounting ESP filesystem to {target_mnt}/boot/efi...")
+        log_to_task(task_id, f"Mounting ESP filesystem {part1} to {target_mnt}/boot/efi...")
         subprocess.check_call(["mount", part1, f"{target_mnt}/boot/efi"])
+
+        os.makedirs(f"{target_mnt}/var/log/edge", exist_ok=True)
+        log_to_task(task_id, f"Mounting log filesystem {part4} to {target_mnt}/var/log/edge...")
+        subprocess.check_call(["mount", part4, f"{target_mnt}/var/log/edge"])
+
+        os.makedirs(f"{target_mnt}/var/opt/edge", exist_ok=True)
+        log_to_task(task_id, f"Mounting storage filesystem {part5} to {target_mnt}/var/opt/edge...")
+        subprocess.check_call(["mount", part5, f"{target_mnt}/var/opt/edge"])
 
         # 6. Extract Borg Backup
         repo_path = f"/data/borg/{node.hostname}"
@@ -161,7 +188,22 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
                     f.write(f"allow-hotplug {iface}\niface {iface} inet dhcp\n\n")
             log_to_task(task_id, f"Injected /etc/network/interfaces.d config mapping: {', '.join(ifaces_to_configure)}")
 
-        # 8. Chroot, Grub setup
+        # 8. Rewrite target /etc/fstab with strict 5-line template
+        log_to_task(task_id, "Writing standardized 5-line /etc/fstab to target...")
+        fstab_path = f"{target_mnt}/etc/fstab"
+        os.makedirs(os.path.dirname(fstab_path), exist_ok=True)
+        fstab_content = f"""# Standardized fstab via Borg Orchestrator Auto-Prepare
+LABEL=edgeroot   /               ext4    defaults,noatime                  0       1
+UUID={node.efi_uuid}  /boot/efi       vfat    umask=0077,defaults,noatime       0       1
+LABEL=edgeboot   /boot           ext2    defaults,noatime                  0       2
+LABEL=edgelog    /var/log/edge   ext4    defaults,noatime                  0       2
+LABEL=edgestor   /var/opt/edge   ext4    defaults,noatime                  0       2
+"""
+        with open(fstab_path, "w") as f:
+            f.write(fstab_content)
+        log_to_task(task_id, "Standardized /etc/fstab successfully written.")
+
+        # 9. Chroot, Grub setup
         log_to_task(task_id, "Mounting virtual filesystems...")
         subprocess.check_call(["mount", "--bind", "/dev", f"{target_mnt}/dev"])
         subprocess.check_call(["mount", "--bind", "/dev/pts", f"{target_mnt}/dev/pts"])
@@ -193,14 +235,15 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         else:
             log_to_task(task_id, "WARNING: Could not find compiled grubx64.efi loader. Proceeding.")
 
-        # 9. Post-Restore verification audit
+        # 10. Post-Restore verification audit
         log_to_task(task_id, "Starting post-restore audit...")
-        fstab_content = ""
         with open(f"{target_mnt}/etc/fstab", "r") as f:
             fstab_content = f.read()
 
-        if "LABEL=edgeroot" not in fstab_content:
-            raise ValueError("Post-restore verification audit failed: /etc/fstab is missing LABEL=edgeroot mapping.")
+        required_labels = ["LABEL=edgeroot", "LABEL=edgeboot", "LABEL=edgelog", "LABEL=edgestor", f"UUID={node.efi_uuid}"]
+        for label in required_labels:
+            if label not in fstab_content:
+                raise ValueError(f"Post-restore verification audit failed: /etc/fstab is missing '{label}' mapping.")
 
         log_to_task(task_id, "Post-restore verification audit passed. Filesystems, labels, and fstab structures are verified.")
 

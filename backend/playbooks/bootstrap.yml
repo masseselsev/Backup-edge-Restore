@@ -75,19 +75,23 @@
     - name: Gather partition and system details
       shell: |
         set -e
-        root_part=$(findmnt -n -o SOURCE /)
-        root_disk=$(lsblk -no PKNAME "$root_part")
-        if [ -z "$root_disk" ]; then
+        root_part=$(findmnt -n -o SOURCE / || echo "")
+        root_disk=$(lsblk -no PKNAME "$root_part" 2>/dev/null || echo "")
+        if [ -z "$root_disk" ] && [ -n "$root_part" ]; then
           root_disk=$(echo "$root_part" | sed -E 's/p[0-9]+$//')
         fi
-        disk_base=$(basename "$root_disk")
-        rotational=$(cat /sys/block/"$disk_base"/queue/rotational)
+        if [ -n "$root_disk" ]; then
+          disk_base=$(basename "$root_disk")
+          rotational=$(cat /sys/block/"$disk_base"/queue/rotational 2>/dev/null || echo "1")
+        else
+          rotational="1"
+        fi
         disk_type="SATA"
         if [ "$rotational" = "0" ]; then
           disk_type="NVME"
         fi
 
-        net_iface=$(ip -o route get 8.8.8.8 | awk '{print $5}')
+        net_iface=$(ip -o route get 8.8.8.8 2>/dev/null | awk '{print $5}' || echo "")
 
         efi_part=$(findmnt -n -o SOURCE /boot/efi || findmnt -n -o SOURCE /boot || echo "")
         efi_uuid=""
@@ -95,17 +99,18 @@
           efi_uuid=$(blkid -s UUID -o value "$efi_part" || echo "")
         fi
 
-        root_label=$(e2label "$root_part" 2>/dev/null || echo "")
-        efi_label=""
-        if [ -n "$efi_part" ]; then
-          efi_label=$(fatlabel "$efi_part" 2>/dev/null || dosfslabel "$efi_part" 2>/dev/null || echo "")
-        fi
+        part_boot=$(findmnt -n -o SOURCE /boot || echo "")
+        part_log=$(findmnt -n -o SOURCE /var/log/edge || echo "")
+        part_stor=$(findmnt -n -o SOURCE /var/opt/edge || echo "")
+
+        label_root=$(e2label "$root_part" 2>/dev/null || echo "")
+        label_boot=$(e2label "$part_boot" 2>/dev/null || echo "")
+        label_log=$(e2label "$part_log" 2>/dev/null || echo "")
+        label_stor=$(e2label "$part_stor" 2>/dev/null || echo "")
 
         prepared="false"
-        if [ "$root_label" = "edgeroot" ]; then
-          if [ -z "$efi_part" ] || [ "$efi_label" = "edgeboot" ]; then
-            prepared="true"
-          fi
+        if [ "$label_root" = "edgeroot" ] && [ "$label_boot" = "edgeboot" ] && [ "$label_log" = "edgelog" ] && [ "$label_stor" = "edgestor" ]; then
+          prepared="true"
         fi
 
         echo "DISK_TYPE:$disk_type"
