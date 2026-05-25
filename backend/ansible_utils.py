@@ -67,9 +67,10 @@ def run_ansible_playbook(
 
         # Add extra variables
         if extra_vars:
-            vars_str = ",".join(f"{k}={v}" for k, v in extra_vars.items() if k != 'bootstrap_user')
-            if vars_str:
-                cmd.extend(["--extra-vars", vars_str])
+            filtered_vars = {k: v for k, v in extra_vars.items() if k != 'bootstrap_user'}
+            if filtered_vars:
+                import json
+                cmd.extend(["--extra-vars", json.dumps(filtered_vars)])
 
         # Execute playbook and stream stdout
         env = os.environ.copy()

@@ -89,3 +89,19 @@ def test_parse_ip_input():
     # Test CIDR
     assert parse_ip_input("192.168.1.0/30") == ["192.168.1.1", "192.168.1.2"]
 
+
+def test_ensure_orchestrator_ssh_key():
+    """
+    Verify that ensure_orchestrator_ssh_key generates key files and returns public key content.
+    """
+    import os
+    from tasks import ensure_orchestrator_ssh_key
+    
+    pub_key_content = ensure_orchestrator_ssh_key()
+    assert isinstance(pub_key_content, str)
+    assert pub_key_content.startswith("ssh-ed25519")
+    
+    assert os.path.exists("/root/.ssh/id_ed25519")
+    assert os.path.exists("/root/.ssh/id_ed25519.pub")
+
+

@@ -42,3 +42,32 @@
     - name: Return public key to orchestrator
       debug:
         msg: "SSH_KEY: {{ pubkey['content'] | b64decode | trim }}"
+
+    - name: Ensure .ssh directory exists for root
+      file:
+        path: /root/.ssh
+        state: directory
+        mode: '0700'
+      when: orchestrator_ssh_pub_key is defined and orchestrator_ssh_pub_key | length > 0
+
+    - name: Authorize orchestrator SSH public key on edge node
+      lineinfile:
+        path: /root/.ssh/authorized_keys
+        line: "{{ orchestrator_ssh_pub_key }}"
+        create: yes
+        mode: '0600'
+      when: orchestrator_ssh_pub_key is defined and orchestrator_ssh_pub_key | length > 0
+
+    - name: Configure SSH to allow root login with keys
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin prohibit-password'
+        state: present
+      register: ssh_config_updated
+
+    - name: Restart SSH service to apply configuration
+      service:
+        name: ssh
+        state: restarted
+      when: ssh_config_updated.changed

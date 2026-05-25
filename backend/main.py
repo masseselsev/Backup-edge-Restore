@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 import schemas
-from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, flash_restore_device
+from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, flash_restore_device, ensure_orchestrator_ssh_key
 
 app = FastAPI(title="Borg Backup & Bare-Metal Restore Orchestrator API")
 
@@ -83,8 +83,13 @@ def parse_ip_input(ip_input: str) -> List[str]:
 @app.on_event("startup")
 def startup_db_init():
     """
-    Ensure settings are initialized in the database on startup.
+    Ensure settings are initialized in the database on startup and orchestrator SSH keys are ready.
     """
+    try:
+        ensure_orchestrator_ssh_key()
+    except Exception as e:
+        print(f"Error ensuring SSH keypair on startup: {str(e)}")
+
     db = next(get_db())
     settings = db.query(models.Settings).first()
     if not settings:
