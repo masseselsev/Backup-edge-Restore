@@ -11,11 +11,29 @@ export default function TaskLogsModal({ taskId, title, onClose }: TaskLogsModalP
   const [status, setStatus] = useState('PENDING');
   const [logs, setLogs] = useState('');
   const terminalEndRef = useRef<HTMLDivElement>(null);
+  const notFoundCountRef = useRef(0);
 
   const fetchLogs = async () => {
     try {
       const res = await fetch(`/api/tasks/${taskId}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (res.status === 404) {
+          notFoundCountRef.current += 1;
+          // After 15 consecutive 404s (~15s), the task likely crashed before
+          // creating its TaskLog record (e.g. import error in worker).
+          if (notFoundCountRef.current >= 15) {
+            setStatus('FAILED');
+            setLogs(
+              '[SYSTEM] Task failed to start. The worker process crashed before producing any log output.\n' +
+              'This usually indicates a code-level error in the worker container (e.g., missing module).\n' +
+              'Check `docker compose logs worker` on the server for details.'
+            );
+          }
+        }
+        return;
+      }
+      // Reset counter on successful fetch
+      notFoundCountRef.current = 0;
       const data = await res.json();
       setStatus(data.status);
       setLogs(data.log_output);
