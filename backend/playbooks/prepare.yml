@@ -99,6 +99,29 @@
           with_items: "{{ sys_info.stdout_lines }}"
           when: "'PART_STOR:' in item"
 
+        - name: Extract part_efi
+          set_fact:
+            part_efi: "{{ item.split('PART_EFI:')[1] }}"
+          with_items: "{{ sys_info.stdout_lines }}"
+          when: "'PART_EFI:' in item"
+
+        - name: Label root filesystem
+          command: e2label "{{ part_root }}" edgeroot
+
+        - name: Label boot filesystem
+          command: e2label "{{ part_boot }}" edgeboot
+
+        - name: Label log filesystem
+          command: e2label "{{ part_log }}" edgelog
+
+        - name: Label storage filesystem
+          command: e2label "{{ part_stor }}" edgestor
+
+        - name: Strip edgeboot label from EFI partition if present
+          shell: |
+            fatlabel "{{ part_efi }}" "EFI" || dosfslabel "{{ part_efi }}" "EFI" || true
+          ignore_errors: yes
+
         - name: Rewrite target /etc/fstab with 5-line template
           copy:
             dest: /etc/fstab
@@ -123,18 +146,6 @@
 
         - name: Update initramfs
           command: update-initramfs -u
-
-        - name: Label root filesystem
-          command: e2label "{{ part_root }}" edgeroot
-
-        - name: Label boot filesystem
-          command: e2label "{{ part_boot }}" edgeboot
-
-        - name: Label log filesystem
-          command: e2label "{{ part_log }}" edgelog
-
-        - name: Label storage filesystem
-          command: e2label "{{ part_stor }}" edgestor
 
       rescue:
         - name: Restore fstab from backup on failure
