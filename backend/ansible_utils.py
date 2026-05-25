@@ -106,6 +106,8 @@ def run_ansible_playbook(
                     parsed_data["network_iface"] = line.split("INTERFACE:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "PREPARED:" in line:
                     parsed_data["prepared"] = line.split("PREPARED:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                if "PARTITION_LAYOUT_JSON:" in line:
+                    parsed_data["partition_layout_raw"] = line.split("PARTITION_LAYOUT_JSON:")[1].strip()
 
                 # Periodic write to DB to avoid overloading database connections
                 if len(log_accumulator) % 5 == 0:
@@ -118,6 +120,80 @@ def run_ansible_playbook(
 
         # Final write to DB
         return_code = process.wait()
+
+        # Transform partition_layout if present
+        if "partition_layout_raw" in parsed_data:
+            try:
+                import json
+                import re
+                raw_json = parsed_data["partition_layout_raw"]
+                if raw_json.startswith('"') and raw_json.endswith('"'):
+                    raw_json = raw_json[1:-1]
+                
+                lsblk_data = json.loads(raw_json)
+                devices = lsblk_data.get("blockdevices", [])
+                
+                root_disk_name = None
+                all_parts = []
+                
+                def traverse_devices(devs):
+                    for dev in devs:
+                        dev_type = dev.get("type", "")
+                        mount = dev.get("mountpoint") or ""
+                        name = dev.get("name", "")
+                        
+                        if dev_type == "part" and mount:
+                            all_parts.append(dev)
+                        
+                        children = dev.get("children", [])
+                        if children:
+                            traverse_devices(children)
+                
+                traverse_devices(devices)
+                
+                root_part = None
+                for p in all_parts:
+                    if p.get("mountpoint") == "/":
+                        root_part = p
+                        break
+                
+                if root_part:
+                    root_part_name = root_part.get("name", "")
+                    if "nvme" in root_part_name:
+                        match = re.match(r'(nvme\d+n\d+)', root_part_name)
+                        if match:
+                            root_disk_name = match.group(1)
+                    else:
+                        match = re.match(r'([a-zA-Z]+)', root_part_name)
+                        if match:
+                            root_disk_name = match.group(1)
+                
+                filtered_layout = []
+                if root_disk_name:
+                    for p in all_parts:
+                        p_name = p.get("name", "")
+                        if root_disk_name in p_name:
+                            filtered_layout.append({
+                                "name": p_name,
+                                "mount": p.get("mountpoint"),
+                                "fstype": p.get("fstype", "ext4"),
+                                "label": p.get("label"),
+                                "uuid": p.get("uuid"),
+                                "size_bytes": int(p.get("size", 0))
+                            })
+                
+                def get_partition_index(part_dict):
+                    name = part_dict["name"]
+                    match = re.search(r'p?(\d+)$', name)
+                    return int(match.group(1)) if match else 99
+                
+                filtered_layout.sort(key=get_partition_index)
+                
+                if filtered_layout:
+                    parsed_data["partition_layout"] = filtered_layout
+            except Exception as e:
+                pass
+
         final_log = "".join(log_accumulator)
         status = "SUCCESS" if return_code == 0 else "FAILED"
 

@@ -117,6 +117,7 @@
         echo "EFI_UUID:$efi_uuid"
         echo "INTERFACE:$net_iface"
         echo "PREPARED:$prepared"
+        echo "PARTITION_LAYOUT_JSON:$(lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID 2>/dev/null | tr -d '\n')"
       register: sys_info
       changed_when: false
 

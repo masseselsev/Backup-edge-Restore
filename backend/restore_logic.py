@@ -57,68 +57,89 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         subprocess.check_call(["wipefs", "-a", target_dev])
 
         # 3. Partitioning via parted (GPT)
+        # Fallback to the default 5-partition layout if node.partition_layout is not defined
+        partitions = node.partition_layout
+        if not partitions:
+            # Reconstruct default 5-partition layout
+            partitions = [
+                {"name": "ESP", "mount": "/boot/efi", "fstype": "vfat", "label": "EFI", "uuid": node.efi_uuid or "458C-37BB", "size_bytes": 512 * 1024 * 1024},
+                {"name": "boot", "mount": "/boot", "fstype": "ext2", "label": "edgeboot", "uuid": "", "size_bytes": 1024 * 1024 * 1024},
+                {"name": "root", "mount": "/", "fstype": "ext4", "label": "edgeroot", "uuid": "", "size_bytes": 30 * 1024 * 1024 * 1024},
+                {"name": "log", "mount": "/var/log/edge", "fstype": "ext4", "label": "edgelog", "uuid": "", "size_bytes": 5 * 1024 * 1024 * 1024},
+                {"name": "storage", "mount": "/var/opt/edge", "fstype": "ext4", "label": "edgestor", "uuid": "", "size_bytes": 0} # 0 means remaining
+            ]
+
         log_to_task(task_id, "Creating GPT partitions...")
         subprocess.check_call(["parted", "-s", target_dev, "mklabel", "gpt"])
-        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "ESP", "fat32", "1MiB", "513MiB"])
-        subprocess.check_call(["parted", "-s", target_dev, "set", "1", "esp", "on"])
-        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "boot", "ext2", "513MiB", "1537MiB"])
-        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "root", "ext4", "1537MiB", "32257MiB"])
-        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "log", "ext4", "32257MiB", "37377MiB"])
-        subprocess.check_call(["parted", "-s", target_dev, "mkpart", "storage", "ext4", "37377MiB", "100%"])
 
-        # Determine partition device paths
-        part1 = f"{target_dev}p1" if "nvme" in target_dev else f"{target_dev}1"
-        part2 = f"{target_dev}p2" if "nvme" in target_dev else f"{target_dev}2"
-        part3 = f"{target_dev}p3" if "nvme" in target_dev else f"{target_dev}3"
-        part4 = f"{target_dev}p4" if "nvme" in target_dev else f"{target_dev}4"
-        part5 = f"{target_dev}p5" if "nvme" in target_dev else f"{target_dev}5"
+        current_offset = 1 # Start at 1MiB for alignment
+        for i, part in enumerate(partitions):
+            start_offset = f"{current_offset}MiB"
+            if i == len(partitions) - 1:
+                end_offset = "100%"
+            else:
+                size_mib = part["size_bytes"] // (1024 * 1024)
+                if size_mib <= 0:
+                    size_mib = 512 # fallback minimum size
+                current_offset += size_mib
+                end_offset = f"{current_offset}MiB"
 
-        # Wait a moment for devices to settle
+            part_name = part.get("name") or f"part{i+1}"
+            fstype = part.get("fstype", "ext4")
+            parted_fs = "fat32" if fstype == "vfat" else fstype
+            subprocess.check_call(["parted", "-s", target_dev, "mkpart", part_name, parted_fs, start_offset, end_offset])
+
+            if part.get("mount") == "/boot/efi":
+                subprocess.check_call(["parted", "-s", target_dev, "set", str(i+1), "esp", "on"])
+
+        # Determine partition device paths and format them
         subprocess.check_call(["udevadm", "settle"])
 
-        # 4. Formatting partitions
-        # FAT32 UUID formatting for mkfs.vfat requires an 8-digit hexadecimal string (without dashes)
-        clean_efi_uuid = node.efi_uuid.replace("-", "")[:8]
-        log_to_task(task_id, f"Formatting ESP partition {part1} with UUID: {clean_efi_uuid}...")
-        subprocess.check_call(["mkfs.vfat", "-F32", "-i", clean_efi_uuid, "-n", "EFI", part1])
+        part_devices = {}
+        for i, part in enumerate(partitions):
+            part_suffix = f"p{i+1}" if "nvme" in target_dev else f"{i+1}"
+            part_dev = f"{target_dev}{part_suffix}"
+            part_devices[part["mount"]] = part_dev
 
-        log_to_task(task_id, f"Formatting boot partition {part2} with label edgeboot...")
-        subprocess.check_call(["mkfs.ext2", "-F", "-L", "edgeboot", part2])
+            fstype = part.get("fstype", "ext4")
+            label = part.get("label") or f"part{i+1}"
+            uuid = part.get("uuid")
 
-        log_to_task(task_id, f"Formatting root partition {part3} with label edgeroot...")
-        subprocess.check_call(["mkfs.ext4", "-F", "-L", "edgeroot", part3])
+            log_to_task(task_id, f"Formatting partition {part_dev} ({part.get('mount')}) as {fstype} with label: {label}...")
 
-        log_to_task(task_id, f"Formatting log partition {part4} with label edgelog...")
-        subprocess.check_call(["mkfs.ext4", "-F", "-L", "edgelog", part4])
+            if fstype == "vfat":
+                clean_efi_uuid = (uuid or node.efi_uuid or "458C-37BB").replace("-", "")[:8]
+                subprocess.check_call(["mkfs.vfat", "-F32", "-i", clean_efi_uuid, "-n", label, part_dev])
+            elif fstype == "ext2":
+                subprocess.check_call(["mkfs.ext2", "-F", "-L", label, part_dev])
+            elif fstype == "ext4":
+                subprocess.check_call(["mkfs.ext4", "-F", "-L", label, part_dev])
+            elif fstype == "xfs":
+                subprocess.check_call(["mkfs.xfs", "-f", "-L", label, part_dev])
+            else:
+                subprocess.check_call(["mkfs.ext4", "-F", "-L", label, part_dev])
 
-        log_to_task(task_id, f"Formatting storage partition {part5} with label edgestor...")
-        subprocess.check_call(["mkfs.ext4", "-F", "-L", "edgestor", part5])
-
-        # 5. Mounting partitions
+        # 5. Mounting partitions hierarchically
         target_mnt = "/mnt/target"
         if os.path.exists(target_mnt):
             subprocess.run(["umount", "-R", target_mnt], stderr=subprocess.DEVNULL)
             shutil.rmtree(target_mnt, ignore_errors=True)
 
         os.makedirs(target_mnt, exist_ok=True)
-        log_to_task(task_id, f"Mounting root filesystem {part3} to {target_mnt}...")
-        subprocess.check_call(["mount", part3, target_mnt])
 
-        os.makedirs(f"{target_mnt}/boot", exist_ok=True)
-        log_to_task(task_id, f"Mounting boot filesystem {part2} to {target_mnt}/boot...")
-        subprocess.check_call(["mount", part2, f"{target_mnt}/boot"])
+        # Sort partitions by path component depth to mount root first hierarchically
+        import pathlib
+        mount_ordered_partitions = sorted(partitions, key=lambda x: len(pathlib.PurePosixPath(x["mount"]).parts))
 
-        os.makedirs(f"{target_mnt}/boot/efi", exist_ok=True)
-        log_to_task(task_id, f"Mounting ESP filesystem {part1} to {target_mnt}/boot/efi...")
-        subprocess.check_call(["mount", part1, f"{target_mnt}/boot/efi"])
+        for part in mount_ordered_partitions:
+            mount_path = part["mount"]
+            part_dev = part_devices[mount_path]
 
-        os.makedirs(f"{target_mnt}/var/log/edge", exist_ok=True)
-        log_to_task(task_id, f"Mounting log filesystem {part4} to {target_mnt}/var/log/edge...")
-        subprocess.check_call(["mount", part4, f"{target_mnt}/var/log/edge"])
+            target_path = target_mnt if mount_path == "/" else f"{target_mnt}{mount_path}"
+            os.makedirs(target_path, exist_ok=True)
 
-        os.makedirs(f"{target_mnt}/var/opt/edge", exist_ok=True)
-        log_to_task(task_id, f"Mounting storage filesystem {part5} to {target_mnt}/var/opt/edge...")
-        subprocess.check_call(["mount", part5, f"{target_mnt}/var/opt/edge"])
+            log_to_task(task_id, f"Mounting partition {part_dev} to {target_path}...")
+            subprocess.check_call(["mount", part_dev, target_path])
 
         # 6. Extract Borg Backup
         repo_path = f"/data/borg/{node.hostname}"
@@ -188,20 +209,31 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
                     f.write(f"allow-hotplug {iface}\niface {iface} inet dhcp\n\n")
             log_to_task(task_id, f"Injected /etc/network/interfaces.d config mapping: {', '.join(ifaces_to_configure)}")
 
-        # 8. Rewrite target /etc/fstab with strict 5-line template
-        log_to_task(task_id, "Writing standardized 5-line /etc/fstab to target...")
+        # 8. Rewrite target /etc/fstab dynamically
+        log_to_task(task_id, "Writing dynamic /etc/fstab to target...")
         fstab_path = f"{target_mnt}/etc/fstab"
         os.makedirs(os.path.dirname(fstab_path), exist_ok=True)
-        fstab_content = f"""# Standardized fstab via Borg Orchestrator Auto-Prepare
-LABEL=edgeroot   /               ext4    defaults,noatime                  0       1
-UUID={node.efi_uuid}  /boot/efi       vfat    umask=0077,defaults,noatime       0       1
-LABEL=edgeboot   /boot           ext2    defaults,noatime                  0       2
-LABEL=edgelog    /var/log/edge   ext4    defaults,noatime                  0       2
-LABEL=edgestor   /var/opt/edge   ext4    defaults,noatime                  0       2
-"""
+
+        fstab_lines = ["# Dynamic fstab generated via Borg Orchestrator Bare-Metal Restore"]
+        for part in partitions:
+            mount = part["mount"]
+            fstype = part["fstype"]
+            label = part["label"]
+            uuid = part["uuid"]
+
+            if mount == "/boot/efi":
+                fstab_lines.append(f"UUID={node.efi_uuid or uuid}  {mount}       {fstype}    umask=0077,defaults,noatime       0       1")
+            else:
+                options = "defaults,noatime"
+                pass_num = 1 if mount == "/" else 2
+                if label:
+                    fstab_lines.append(f"LABEL={label}   {mount}           {fstype}    {options}                  0       {pass_num}")
+                else:
+                    fstab_lines.append(f"UUID={uuid}   {mount}           {fstype}    {options}                  0       {pass_num}")
+
         with open(fstab_path, "w") as f:
-            f.write(fstab_content)
-        log_to_task(task_id, "Standardized /etc/fstab successfully written.")
+            f.write("\n".join(fstab_lines) + "\n")
+        log_to_task(task_id, "Dynamic /etc/fstab successfully written.")
 
         # 9. Chroot, Grub setup
         log_to_task(task_id, "Mounting virtual filesystems...")
@@ -240,10 +272,19 @@ LABEL=edgestor   /var/opt/edge   ext4    defaults,noatime                  0    
         with open(f"{target_mnt}/etc/fstab", "r") as f:
             fstab_content = f.read()
 
-        required_labels = ["LABEL=edgeroot", "LABEL=edgeboot", "LABEL=edgelog", "LABEL=edgestor", f"UUID={node.efi_uuid}"]
-        for label in required_labels:
-            if label not in fstab_content:
-                raise ValueError(f"Post-restore verification audit failed: /etc/fstab is missing '{label}' mapping.")
+        for part in partitions:
+            mount = part["mount"]
+            label = part["label"]
+            uuid = part["uuid"]
+
+            if mount == "/boot/efi":
+                efi_check_uuid = node.efi_uuid or uuid
+                if f"UUID={efi_check_uuid}" not in fstab_content:
+                    raise ValueError(f"Post-restore verification audit failed: /etc/fstab is missing EFI 'UUID={efi_check_uuid}' mapping.")
+            else:
+                expected_target = f"LABEL={label}" if label else f"UUID={uuid}"
+                if expected_target not in fstab_content:
+                    raise ValueError(f"Post-restore verification audit failed: /etc/fstab is missing '{expected_target}' mapping.")
 
         log_to_task(task_id, "Post-restore verification audit passed. Filesystems, labels, and fstab structures are verified.")
 

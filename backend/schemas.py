@@ -34,6 +34,7 @@ class NodeResponse(BaseModel):
     disk_type: str
     network_iface: Optional[str] = None
     efi_uuid: Optional[str] = None
+    partition_layout: Optional[List[dict]] = None
 
     class Config:
         from_attributes = True

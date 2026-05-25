@@ -141,6 +141,8 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
             node.disk_type = res["parsed_data"].get("disk_type", "UNKNOWN")
             node.network_iface = res["parsed_data"].get("network_iface")
             node.efi_uuid = res["parsed_data"].get("efi_uuid")
+            if "partition_layout" in res["parsed_data"]:
+                node.partition_layout = res["parsed_data"]["partition_layout"]
         node.status = "READY" if is_prep else "NEEDS_FIX"
         db.commit()
         log_to_task(task_id, f"Bootstrap completed. {'Already prepared.' if is_prep else 'Key fetched.'}")
@@ -206,6 +208,8 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
         node.disk_type = res["parsed_data"].get("disk_type", "UNKNOWN")
         node.network_iface = res["parsed_data"].get("network_iface")
         node.efi_uuid = res["parsed_data"].get("efi_uuid")
+        if "partition_layout" in res["parsed_data"]:
+            node.partition_layout = res["parsed_data"]["partition_layout"]
         node.status = "READY"
         db.commit()
         log_to_task(task_id, f"Auto-prepare finished. Disk type: {node.disk_type}, EFI UUID: {node.efi_uuid}, Interface: {node.network_iface}", status="SUCCESS")
@@ -482,12 +486,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         node.last_backup = None
         db.commit()
 
-        log_to_task(
-            task_id,
-            f"Purge complete: {deleted_count}/{len(archives)} archives deleted, "
-            f"{purged_rows} DB records removed.",
-            status="SUCCESS"
-        )
+        log_to_task(task_id, f"Purge complete: {deleted_count}/{len(archives)} archives deleted, {purged_rows} DB records removed.", status="SUCCESS")
         return {"status": "SUCCESS", "deleted": deleted_count}
     except Exception as e:
         log_to_task(task_id, f"Exception during purge: {str(e)}", status="FAILED")

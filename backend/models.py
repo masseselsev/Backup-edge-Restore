@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON
 from sqlalchemy.sql import func
 from database import Base
 
@@ -35,6 +35,7 @@ class Node(Base):
     network_iface = Column(String, nullable=True)
     ssh_pub_key = Column(Text, nullable=True)
     efi_uuid = Column(String, nullable=True) # Used to maintain exact ESP filesystem UUID during flasher restore
+    partition_layout = Column(JSON, nullable=True)
 
 
 class BackupHistory(Base):
