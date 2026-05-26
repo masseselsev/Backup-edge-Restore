@@ -161,15 +161,3 @@ To guarantee host platform stability during bulk bare-metal flashing:
    ```bash
    sudo usbreset 152d:0581
    ```
-
----
-
-## 📝 Development Guidelines (GEMINI.md Rules)
-- **Type Hinting**: All Python routes and schemas must use Pydantic models for request/response serialization.
-- **Maximum File Size**: No single source file must exceed **500 lines**. Routers, tasks, and components must be modularly split (e.g., `tasks.py` split into `restore_logic.py`).
-- **Database Modifications**: Do not update database schemas manually. Always generate migrations via Alembic:
-  ```bash
-  docker compose exec backend alembic revision --autogenerate -m "revision_name"
-  docker compose exec backend alembic upgrade head
-  ```
-- **Secrets Management**: Read Borg Passphrase (`BORG_PASSPHRASE`) and Database credentials exclusively from environment variables/`.env`. Never store them in DB or VCS.
