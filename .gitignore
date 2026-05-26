@@ -33,3 +33,6 @@ Thumbs.db
 
 # Docker
 docker-data/
+
+# AI Config
+GEMINI.md
