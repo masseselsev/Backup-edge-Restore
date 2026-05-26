@@ -283,6 +283,18 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         else:
             log_to_task(task_id, "WARNING: Could not find compiled grubx64.efi loader. Proceeding.")
 
+        # Mask live-config generators that fail on persistent installs
+        log_to_task(task_id, "Masking live-config systemd generators to prevent boot warnings...")
+        generators_dir = f"{target_mnt}/etc/systemd/system-generators"
+        os.makedirs(generators_dir, exist_ok=True)
+        try:
+            target_link = os.path.join(generators_dir, "live-config-getty-generator")
+            if os.path.lexists(target_link):
+                os.remove(target_link)
+            os.symlink("/dev/null", target_link)
+        except Exception as e:
+            log_to_task(task_id, f"WARNING: Failed to mask live-config generator: {str(e)}")
+
         # 10. Post-Restore verification audit
         log_to_task(task_id, "Starting post-restore audit...")
         with open(f"{target_mnt}/etc/fstab", "r") as f:

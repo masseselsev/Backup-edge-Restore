@@ -343,7 +343,9 @@ def scan_devices():
                 pass
 
             # Disk Type classification
-            disk_type = "NVME" if "nvme" in name else "SATA"
+            disk_type = "SATA"
+            if "nvme" in name.lower() or "nvme" in model.lower() or "pcie" in model.lower():
+                disk_type = "NVME"
 
             # Convert human size string to bytes estimation
             size_bytes = 0
@@ -393,7 +395,22 @@ def trigger_restore(payload: schemas.RestoreRequest, db: Session = Depends(get_d
         )
 
     # Hardware Mismatch Check
-    target_disk_type = "NVME" if "nvme" in payload.target_dev else "SATA"
+    target_name = os.path.basename(payload.target_dev)
+    target_disk_type = "SATA"
+    if "nvme" in target_name.lower():
+        target_disk_type = "NVME"
+    else:
+        # Check model name in sysfs for USB bridges
+        model_path = f"/sys/block/{target_name}/device/model"
+        if os.path.exists(model_path):
+            try:
+                with open(model_path, "r") as f:
+                    model_content = f.read().strip().lower()
+                if "nvme" in model_content or "pcie" in model_content:
+                    target_disk_type = "NVME"
+            except Exception:
+                pass
+
     if node.disk_type != "UNKNOWN" and node.disk_type != target_disk_type:
         if not payload.override_mismatch:
             raise HTTPException(

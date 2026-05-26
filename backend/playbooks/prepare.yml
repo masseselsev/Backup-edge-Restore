@@ -34,7 +34,7 @@
             disk_base=$(basename "$root_disk")
             rotational=$(cat /sys/block/"$disk_base"/queue/rotational)
             disk_type="SATA"
-            if [ "$rotational" = "0" ]; then
+            if echo "$disk_base" | grep -q "nvme"; then
               disk_type="NVME"
             fi
 
