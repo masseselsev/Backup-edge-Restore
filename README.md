@@ -64,12 +64,11 @@ The system is fully containerized and uses a decoupled architecture to manage co
 ### 3. Backup Scheduling & Global Deduplication
 - Backups are initiated remotely via `ssh` command and stream data to the central Borg SSH Server.
 - **Cross-Device Deduplication**: Because all edge nodes back up into a single, centralized Borg repository (`/data/borg/fleet`), Borg's chunk-level deduplication spans across all devices globally. Identical files, OS binaries, and application assets present on multiple Debian nodes are only stored **once** on the server.
-  - *Example Savings (Assuming a 6 GB base OS footprint)*:
-    - **1 Node**: ~6 GB
-    - **3 Nodes**: ~6.2 GB (Only unique logs/configs added)
-    - **10 Nodes**: ~6.5 GB (Instead of 60 GB)
-    - **100 Nodes**: ~9 GB (Instead of 600+ GB)
-  - This results in up to a **98%+ storage footprint reduction** for fleets running identical base images.
+  - *Example Savings (Assuming a 6 GB base OS footprint per node)*:
+    - **1st Node**: ~6 GB (Base backup)
+    - **Each additional similar node**: saves about 20% - 30% of its space (adding ~4.2 - 4.8 GB) due to cross-node deduplication of identical OS libraries and packages.
+    - **Incremental backups**: of running systems tend towards only ~100 - 200 MB of unique incremental data per backup run (storing only unique logs, cache differences, and database states).
+    - This yields a **20% - 30% total storage footprint reduction** for fleets running similar base images, with incremental runs remaining extremely lightweight (~100 - 200 MB).
 - To prevent database lock-ups on the shared Borg repositories, pruning is decoupled from individual backups. A global Celery Beat schedule triggers a local repository `borg prune` daily at 3:00 AM using the global prune rules (daily, weekly, monthly limits).
 
 ### 4. Bare-Metal Flashing Restore

@@ -100,13 +100,12 @@ Navigate to the **Fleet** tab in the web interface to add edge nodes.
 Because all edge nodes are backed up into a **single, shared central repository** (`/data/borg/fleet`), Borg's built-in deduplication engine works across all devices simultaneously. 
 This means identical system files (Linux kernel, Debian packages, libraries, application Docker images) present across dozens of different devices are physically stored on the server's disk **only once**.
 
-**Example Savings (assuming a base OS footprint of ~6 GB):**
-* **1 copy (1 node)**: takes ~6 GB
-* **3 nodes**: ~6.2 GB *(only unique logs, configs, and keys are added)*
-* **10 nodes**: ~6.5 GB *(instead of 60 GB using classic backups)*
-* **100 nodes**: ~9 GB *(instead of 600+ GB!)*
+**Example Savings (assuming a base OS footprint of ~6 GB per node):**
+* **1st node**: ~6 GB (Base backup)
+* **Each additional similar node**: saves about 20% - 30% of its space (adding ~4.2 - 4.8 GB) due to cross-node deduplication of identical OS libraries and packages.
+* **Incremental backups**: of running systems tend towards only ~100 - 200 MB of unique incremental data per run (storing only unique logs, cache differences, and database states).
 
-As a result, an estate of identical Debian devices can achieve storage requirement reductions of **98% or more**.
+As a result, an estate of similar Debian devices can achieve storage requirement reductions of **20% - 30%**, with incremental runs remaining extremely lightweight (~100 - 200 MB).
 
 ---
 
