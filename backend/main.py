@@ -449,7 +449,7 @@ def delete_node(node_id: int, db: Session = Depends(get_db)):
     
     # 1. Clean up node archives in the shared Borg repository
     repo_path = "/data/borg/fleet"
-    if os.path.exists(repo_path):
+    if os.path.exists(repo_path) and os.path.exists(os.path.join(repo_path, "config")):
         try:
             env = os.environ.copy()
             env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")

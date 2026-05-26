@@ -448,9 +448,9 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
     try:
-        # Check if repo exists
-        if not os.path.exists(repo_path):
-            log_to_task(task_id, "No archives to purge (repository does not exist).", status="SUCCESS")
+        # Check if repo exists and is initialized
+        if not os.path.exists(repo_path) or not os.path.exists(os.path.join(repo_path, "config")):
+            log_to_task(task_id, "No archives to purge (repository does not exist or is not initialized).", status="SUCCESS")
             # Clean up database history records for this node
             purged_rows = db.query(BackupHistory).filter(
                 BackupHistory.node_id == node_id
