@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Node
 
-def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = True) -> Dict[str, Any]:
+def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = False) -> Dict[str, Any]:
     """
     Executes the bare-metal restore partition flashing, filesystem formatting,
     Borg backup extraction, and network wildcard injection options.

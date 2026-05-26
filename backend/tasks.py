@@ -400,7 +400,7 @@ def global_daily_prune() -> Dict[str, Any]:
     return results
 
 @celery_app.task(bind=True)
-def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = True) -> Dict[str, Any]:
+def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = False) -> Dict[str, Any]:
     """
     Celery task running locally on the worker in privileged mode.
     Wipes target device, partitions GPT, formats ESP with historical UUID,

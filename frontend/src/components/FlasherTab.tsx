@@ -42,7 +42,7 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
   const [mismatchWarning, setMismatchWarning] = useState(false);
   const [overrideChecked, setOverrideChecked] = useState(false);
   const [keepNetworkConfigs, setKeepNetworkConfigs] = useState(true);
-  const [wipeMacBindings, setWipeMacBindings] = useState(true);
+  const [wipeMacBindings, setWipeMacBindings] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 

@@ -69,7 +69,7 @@ class RestoreRequest(BaseModel):
     target_dev: str
     override_mismatch: bool = False
     keep_network_configs: bool = True
-    wipe_mac_bindings: bool = True
+    wipe_mac_bindings: bool = False
 
 
 class DeviceResponse(BaseModel):
