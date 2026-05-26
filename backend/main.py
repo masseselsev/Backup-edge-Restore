@@ -96,6 +96,11 @@ def startup_db_init():
         settings = models.Settings()
         db.add(settings)
         db.commit()
+    else:
+        # Upgrade old default exclusions to the new default if unchanged by user
+        if settings.global_exclusions == '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*':
+            settings.global_exclusions = '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*'
+            db.commit()
     db.close()
 
 

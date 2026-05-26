@@ -69,6 +69,8 @@ The system is fully containerized and uses a decoupled architecture to manage co
     - **Each additional similar node (Cross-node deduplication)**: saves up to **97%** for identical/cloned nodes (adding only **~100 - 200 MB** for the same device under a different name) and saves about **20% - 30%** of space for nodes with minor system configuration and package differences.
     - **Incremental backups**: of running systems tend towards only **~100 - 200 MB** of unique incremental data per backup run (storing only unique logs, cache differences, and database states).
     - This yields a massive overall storage footprint reduction for fleets running similar base images, with incremental runs remaining extremely lightweight.
+- **Configurable Global Exclusions**: In the **Orchestrator Settings** tab in the web UI, you can configure a comma-separated list of directories to exclude from backups (e.g. temporary/virtual mounts or heavy log/data folders).
+  - **Default Exclusions**: `/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*`
 - To prevent database lock-ups on the shared Borg repositories, pruning is decoupled from individual backups. A global Celery Beat schedule triggers a local repository `borg prune` daily at 3:00 AM using the global prune rules (daily, weekly, monthly limits).
 
 ### 4. Bare-Metal Flashing Restore

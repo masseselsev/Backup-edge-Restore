@@ -93,7 +93,8 @@ Navigate to the **Fleet** tab in the web interface to add edge nodes.
 1. In the **Fleet** tab, click the **Backup** button for the desired node.
 2. In the resulting modal, you can click "View Logs" to monitor the real-time execution stream.
 3. The orchestrator connects to the node via SSH and triggers the backup command from the client side (push model), streaming data to the central `borg-server` container.
-4. System directories (such as `/dev`, `/proc`, `/sys`) are automatically excluded.
+4. System directories and configured paths are excluded dynamically based on the global exclusions setting (configured under the **Settings** tab in the web UI).
+   - **Default Exclusions**: `/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*`
 5. You can track progress and final sizes in the **History** tab.
 
 ### 💡 How Global Deduplication & Compression Work (Space Savings)
@@ -165,5 +166,5 @@ Throughout its lifecycle, the orchestrator performs a strictly defined set of no
 ### During the Backup Phase
 **No new packages are installed** on the node. The orchestrator merely executes the already installed `borg create` client, which:
 1. Scans the node's filesystem.
-2. Automatically **excludes** virtual and temporary directories: `/dev/*`, `/proc/*`, `/sys/*`, `/run/*`, `/mnt/*`.
+2. Automatically **excludes** virtual, temporary, and configured edge directories based on the orchestrator's global settings (default exclusions: `/dev/*`, `/proc/*`, `/sys/*`, `/run/*`, `/mnt/*`, `/media/*`, `/lost+found`, `/var/log/edge/*`, `/var/opt/edge/*`).
 3. Hashes the data and securely transmits only new, deduplicated blocks over SSH to the orchestrator's central `borg-server`.
