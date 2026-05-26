@@ -14,8 +14,12 @@ node_modules/
 frontend/node_modules/
 
 # Environment
+.env
 .env.local
 .env.*.local
+
+# Logs
+*.log
 
 # IDE
 .idea/
