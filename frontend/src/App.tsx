@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Server, HardDrive, History, Settings as Gear, Terminal } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
@@ -12,6 +12,54 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('fleet');
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
   const [logTaskTitle, setLogTaskTitle] = useState<string>('');
+  
+  const [showIpPromptModal, setShowIpPromptModal] = useState(false);
+  const [orchestratorIp, setOrchestratorIp] = useState('');
+  const [settings, setSettings] = useState<any>(null);
+  const [savingIp, setSavingIp] = useState(false);
+
+  useEffect(() => {
+    // Check if nodes list is empty on mount
+    fetch('/api/nodes')
+      .then(res => res.json())
+      .then(nodes => {
+        if (nodes.length === 0) {
+          // If empty, fetch current settings to let them check/set the IP address
+          fetch('/api/settings')
+            .then(res => res.json())
+            .then(sett => {
+              setSettings(sett);
+              setOrchestratorIp(sett.orchestrator_ip || '');
+              setShowIpPromptModal(true);
+            })
+            .catch(err => console.error(err));
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
+  const handleSaveIp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settings) return;
+    setSavingIp(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...settings,
+          orchestrator_ip: orchestratorIp
+        })
+      });
+      if (res.ok) {
+        setShowIpPromptModal(false);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingIp(false);
+    }
+  };
 
   const handleViewLogs = (taskId: string, title: string) => {
     setLogTaskId(taskId);
@@ -114,6 +162,61 @@ export default function App() {
           title={logTaskTitle}
           onClose={() => setLogTaskId(null)}
         />
+      )}
+
+      {/* IP Prompt Modal when there are no nodes */}
+      {showIpPromptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
+              <div className="p-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg">
+                <Gear size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white leading-tight">Welcome & Setup</h3>
+                <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">Configure Orchestrator IP</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed font-medium">
+              No edge nodes have been registered in the database yet. To ensure new nodes can communicate with this orchestrator and transfer backups successfully, please verify and set the **Orchestrator IP Address** below.
+            </p>
+
+            <form onSubmit={handleSaveIp} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Orchestrator IP Address</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 192.168.222.2 (IP accessible to edge nodes)"
+                  value={orchestratorIp}
+                  onChange={(e) => setOrchestratorIp(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  Ensure this is the IP address of this server that edge nodes can reach over the network.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowIpPromptModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors"
+                >
+                  Skip
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingIp}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {savingIp ? 'Saving...' : 'Save & Continue'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

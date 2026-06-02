@@ -55,6 +55,34 @@ def log_to_task(task_id: str, message: str, status: Optional[str] = None) -> Non
     finally:
         db.close()
 
+def fix_ssh_permissions() -> None:
+    """
+    Ensures that the orchestrator SSH keys and authorized_keys file
+    have correct permissions and ownership. The SSH directory and files
+    must be readable by user borg (uid 1000) for the SSH daemon in borg-server
+    to successfully validate keys.
+    """
+    ssh_dir = "/root/.ssh"
+    auth_keys = os.path.join(ssh_dir, "authorized_keys")
+    try:
+        if os.path.exists(ssh_dir):
+            # Change ownership of all files to 1000:1000 (user borg)
+            # root can still read/write everything, but borg needs access
+            subprocess.run(["chown", "-R", "1000:1000", ssh_dir], check=True)
+            # Directory must be 0700
+            os.chmod(ssh_dir, 0o700)
+            
+            # Ensure authorized_keys is 0600
+            if os.path.exists(auth_keys):
+                os.chmod(auth_keys, 0o600)
+                
+            # Ensure private key is 0600
+            priv_key = os.path.join(ssh_dir, "id_ed25519")
+            if os.path.exists(priv_key):
+                os.chmod(priv_key, 0o600)
+    except Exception as e:
+        logger.error(f"Failed to fix SSH permissions: {str(e)}")
+
 def ensure_orchestrator_ssh_key() -> str:
     """
     Ensures that the Orchestrator's SSH private/public keypair exists in /root/.ssh.
@@ -78,7 +106,10 @@ def ensure_orchestrator_ssh_key() -> str:
             raise e
     try:
         with open(pub_key, "r") as f:
-            return f.read().strip()
+            pub_key_content = f.read().strip()
+        # Ensure correct ownership and permissions for the shared SSH volume
+        fix_ssh_permissions()
+        return pub_key_content
     except Exception as e:
         logger.error(f"Failed to read SSH public key: {str(e)}")
         raise e
@@ -155,8 +186,20 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
                 f'no-port-forwarding,no-X11-forwarding,no-pty '
             )
             entry = f"{command_restriction}{ssh_pub_key}\n"
-            with open(authorized_keys_path, "a") as f:
-                f.write(entry)
+            
+            # Prevent duplicate key entries
+            if os.path.exists(authorized_keys_path):
+                with open(authorized_keys_path, "r") as f:
+                    content = f.read()
+            else:
+                content = ""
+                
+            if ssh_pub_key not in content:
+                with open(authorized_keys_path, "a") as f:
+                    f.write(entry)
+                    
+            # Ensure correct ownership and permissions for the shared SSH volume
+            fix_ssh_permissions()
             log_to_task(task_id, "Borg SSH authorized_keys updated with forced command restriction.", status="SUCCESS")
         except Exception as e:
             log_to_task(task_id, f"WARNING: Failed to append key to authorized_keys: {str(e)}", status="FAILED")

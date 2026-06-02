@@ -485,6 +485,9 @@ def delete_node(node_id: int, db: Session = Depends(get_db)):
             
             with open(authorized_keys_path, "w") as f:
                 f.writelines(new_lines)
+                
+            from tasks import fix_ssh_permissions
+            fix_ssh_permissions()
         except Exception as e:
             print(f"WARNING: Failed to clean up SSH authorized_keys for {node.hostname}: {str(e)}")
 
