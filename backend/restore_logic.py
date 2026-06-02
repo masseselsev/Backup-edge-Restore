@@ -172,6 +172,30 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         subprocess.check_call(extract_cmd, cwd=target_mnt, env=env)
         log_to_task(task_id, "Extraction completed successfully.")
 
+        # 6b. Recreate PostgreSQL log directories if they point to custom locations (e.g. /var/log/edge/postgresql)
+        log_to_task(task_id, "Checking for custom PostgreSQL log directories to recreate...")
+        try:
+            pg_etc_dir = os.path.join(target_mnt, "etc/postgresql")
+            if os.path.exists(pg_etc_dir):
+                for version in os.listdir(pg_etc_dir):
+                    version_path = os.path.join(pg_etc_dir, version)
+                    if os.path.isdir(version_path):
+                        for cluster in os.listdir(version_path):
+                            cluster_path = os.path.join(version_path, cluster)
+                            log_symlink = os.path.join(cluster_path, "log")
+                            if os.path.islink(log_symlink):
+                                target_log_path = os.readlink(log_symlink)
+                                log_dir_in_chroot = os.path.dirname(target_log_path)
+                                log_dir_host = os.path.join(target_mnt, log_dir_in_chroot.lstrip("/"))
+                                if not os.path.exists(log_dir_host):
+                                    log_to_task(task_id, f"Recreating custom PostgreSQL log directory: {log_dir_in_chroot}")
+                                    os.makedirs(log_dir_host, exist_ok=True)
+                                    subprocess.run(["chroot", target_mnt, "chown", "postgres:postgres", log_dir_in_chroot], check=True)
+                                    subprocess.run(["chroot", target_mnt, "chmod", "775", log_dir_in_chroot], check=True)
+        except Exception as e:
+            log_to_task(task_id, f"WARNING: Failed to recreate custom PostgreSQL log directories: {str(e)}")
+
+
         # 7. Network configuration injection (PCIe Drift Prevention)
         if keep_network_configs:
             log_to_task(task_id, "Skipping network config injection: preserving 1-to-1 original backup settings.")
