@@ -90,6 +90,13 @@ def startup_db_init():
     except Exception as e:
         print(f"Error ensuring SSH keypair on startup: {str(e)}")
 
+    # Ensure permissions of the shared borg storage are correct from day one
+    try:
+        from tasks import fix_repo_permissions
+        fix_repo_permissions("/data/borg/fleet")
+    except Exception as e:
+        print(f"Error ensuring repository permissions on startup: {str(e)}")
+
     db = next(get_db())
     settings = db.query(models.Settings).first()
     if not settings:

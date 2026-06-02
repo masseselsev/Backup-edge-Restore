@@ -115,8 +115,14 @@ def ensure_orchestrator_ssh_key() -> str:
         raise e
 
 def fix_repo_permissions(repo_path: str) -> None:
-    """Ensures repository files are owned by user borg (1000:1000) for ssh write access."""
+    """Ensures repository files and their parent directories are owned by user borg (1000:1000) for ssh write access."""
     try:
+        # Ensure parent directory (/data/borg) is writeable by borg (1000)
+        parent_dir = os.path.dirname(repo_path)
+        if os.path.exists(parent_dir):
+            subprocess.run(["chown", "1000:1000", parent_dir], check=True)
+            subprocess.run(["chmod", "755", parent_dir], check=True)
+            
         if os.path.exists(repo_path):
             subprocess.run(["chown", "-R", "1000:1000", repo_path], check=True)
     except Exception as e:
@@ -307,6 +313,9 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
     archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/fleet"
 
+    # Ensure the parent directory is writeable by user borg inside the containers
+    fix_repo_permissions("/data/borg/fleet")
+
     # Ensure the Borg repository is initialized on central server
     init_cmd = [
         "ssh", "-o", "StrictHostKeyChecking=no",
@@ -317,7 +326,11 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
     ]
     log_to_task(task_id, "Checking/Initializing Borg repository...")
     try:
-        subprocess.run(init_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        res_init = subprocess.run(init_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Borg returns 2 if the repository already exists, which is a success state for us.
+        # Otherwise, if it returns non-zero/non-two, we log the error.
+        if res_init.returncode not in (0, 2):
+            log_to_task(task_id, f"WARNING: Repository initialization status: {res_init.stderr.strip()}")
     except Exception as e:
         log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
 
