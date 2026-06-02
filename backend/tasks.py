@@ -426,6 +426,9 @@ def global_daily_prune() -> Dict[str, Any]:
 
     repo_path = "/data/borg/fleet"
     if os.path.exists(repo_path):
+        env = os.environ.copy()
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+
         for node in nodes:
             cmd = [
                 "borg", "prune",
@@ -435,8 +438,6 @@ def global_daily_prune() -> Dict[str, Any]:
                 "--glob-archives", f"{node.hostname}-*",
                 repo_path
             ]
-            env = os.environ.copy()
-            env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
             try:
                 res = subprocess.run(cmd, env=env, capture_output=True, text=True)
@@ -450,6 +451,18 @@ def global_daily_prune() -> Dict[str, Any]:
                 results[node.hostname] = f"EXCEPTION: {str(e)}"
                 logger.error(f"Exception pruning {node.hostname}: {str(e)}")
         
+        # Compact the repository to reclaim space after pruning
+        try:
+            logger.info("Starting Borg repository compaction after prune...")
+            compact_cmd = ["borg", "compact", repo_path]
+            res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
+            if res_compact.returncode == 0:
+                logger.info("Successfully compacted Borg repository after daily prune.")
+            else:
+                logger.error(f"Failed to compact Borg repository after daily prune: {res_compact.stderr}")
+        except Exception as e:
+            logger.error(f"Exception compacting Borg repository: {str(e)}")
+
         fix_repo_permissions(repo_path)
 
     db.close()
@@ -554,6 +567,16 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
                 log_to_task(task_id, f"Deleted archive: {name}")
             else:
                 log_to_task(task_id, f"Failed to delete archive {name}: {del_res.stderr}")
+
+        # Run compaction to reclaim disk space immediately if any archives were deleted
+        if deleted_count > 0:
+            log_to_task(task_id, "Compacting Borg repository to reclaim disk space...")
+            compact_cmd = ["borg", "compact", repo_path]
+            compact_res = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
+            if compact_res.returncode == 0:
+                log_to_task(task_id, "Repository compaction completed successfully.")
+            else:
+                log_to_task(task_id, f"Repository compaction failed: {compact_res.stderr}")
 
         # Clean up database history records for this node
         purged_rows = db.query(BackupHistory).filter(

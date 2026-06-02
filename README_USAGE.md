@@ -44,7 +44,13 @@ A compact PC like an Intel NUC is perfectly suited to serve as the central manag
    *(Note: You can override this address on the fly later via the **Settings** tab in the web interface, without needing to edit the `.env` file or restart containers).*
 
 3. **Configuring Backup Storage Location (Important!)**
-   By default, all repositories are stored in an internal Docker volume (`borg-data`), which is physically located in `/var/lib/docker/volumes/`. Because backups can consume a lot of space, it is highly recommended to mount them on a separate large drive.
+   By default, all repositories are stored in an internal Docker volume (`borg-data`), which is physically located in `/var/lib/docker/volumes/`. Because backups can consume a lot of space, it is highly recommended to mount them on a separate large drive to avoid saturating the system root partition.
+
+   > [!WARNING]
+   > Running out of space on the root partition will cause backup tasks to fail with `Insufficient free space to complete transaction` errors and can disrupt other host services.
+   > 
+   > *Note: The orchestrator automatically executes `borg compact` after pruning or purging archives to reclaim disk space immediately, but utilizing a dedicated storage partition is still critical.*
+
    To mount an external folder (e.g., `/mnt/hdd/borg_data`), open the `docker-compose.yml` file, find the `volumes:` block at the very bottom of the file, and override `borg-data` as follows:
    ```yaml
    volumes:
