@@ -116,11 +116,12 @@ def upgrade_settings(db: Session):
         old_defaults = [
             '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*',
             '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*',
-            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*'
+            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*',
+            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,/var/log/**/*.gz,/var/log/**/*.1'
         ]
         new_default = (
             '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,'
-            '/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,'
+            '/var/log/edge/*,/var/opt/edge/blobstore/*,/var/spool/edge/*,/var/log/journal/*,'
             '/var/log/**/*.gz,/var/log/**/*.1'
         )
         if settings.global_exclusions in old_defaults:

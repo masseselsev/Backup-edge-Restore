@@ -114,7 +114,7 @@ def test_upgrade_settings(db_session):
     
     new_default = (
         '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,'
-        '/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,'
+        '/var/log/edge/*,/var/opt/edge/blobstore/*,/var/spool/edge/*,/var/log/journal/*,'
         '/var/log/**/*.gz,/var/log/**/*.1'
     )
     
@@ -148,16 +148,32 @@ def test_upgrade_settings(db_session):
     db_session.refresh(s3)
     assert s3.global_exclusions == new_default
 
-    # Test case 4: Custom user setting is NOT upgraded
+    # Test case 4: Upgrade from fourth default (containing /var/opt/edge/* but also journal/gz/1)
     db_session.query(models.Settings).delete()
     db_session.commit()
-    custom_val = '/dev/*,/custom/*'
-    s4 = models.Settings(global_exclusions=custom_val)
+    s4 = models.Settings(
+        global_exclusions=(
+            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,'
+            '/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,'
+            '/var/log/**/*.gz,/var/log/**/*.1'
+        )
+    )
     db_session.add(s4)
     db_session.commit()
     upgrade_settings(db_session)
     db_session.refresh(s4)
-    assert s4.global_exclusions == custom_val
+    assert s4.global_exclusions == new_default
+
+    # Test case 5: Custom user setting is NOT upgraded
+    db_session.query(models.Settings).delete()
+    db_session.commit()
+    custom_val = '/dev/*,/custom/*'
+    s5 = models.Settings(global_exclusions=custom_val)
+    db_session.add(s5)
+    db_session.commit()
+    upgrade_settings(db_session)
+    db_session.refresh(s5)
+    assert s5.global_exclusions == custom_val
 
 
 
