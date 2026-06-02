@@ -63,13 +63,9 @@ A compact PC like an Intel NUC is perfectly suited to serve as the central manag
    ```bash
    docker compose up -d --build
    ```
+   *(Note: Database migrations run automatically on startup inside the backend container. It will wait for PostgreSQL to become online, apply Alembic migrations, and launch the server).*
 
-5. Initialize the database (run migrations):
-   ```bash
-   docker compose exec backend alembic upgrade head
-   ```
-
-6. **Done!** The management interface is available in your browser at `http://<YOUR-NUC-IP>:7777`.
+5. **Done!** The management interface is available in your browser at `http://<YOUR-NUC-IP>:7777`.
 
 ---
 
