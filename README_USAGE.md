@@ -30,7 +30,10 @@ A compact PC like an Intel NUC is perfectly suited to serve as the central manag
    cd /opt/stacks/Backup-edge-Restore
    ```
 
-2. Create a `.env` file in the project root. Be sure to use strong passwords. 
+2. Create a `.env` file in the project root by copying the template file and editing it. Be sure to use strong passwords:
+   ```bash
+   cp .env.example .env
+   ```
    **Important parameter `ORCHESTRATOR_IP`**: if your edge nodes are located in a different subnet or connect via VPN/ZeroTier, specify the IP address of the NUC itself, by which it is accessible to the client machines. Nodes will push data to the central Borg repository via this IP.
    ```env
    POSTGRES_USER=postgres
