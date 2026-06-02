@@ -24,7 +24,7 @@ services:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
     restart: always
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: /app/entrypoint.sh
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
