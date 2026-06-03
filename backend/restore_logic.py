@@ -7,6 +7,18 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Node
 
+def get_archive_total_files(db: Session, archive_name: str) -> int:
+    """Reads backup history for the archive and extracts the total file count from its JSON log."""
+    from models import BackupHistory
+    history = db.query(BackupHistory).filter(BackupHistory.archive_name == archive_name).first()
+    if history and history.log_output:
+        try:
+            data = json.loads(history.log_output)
+            return int(data.get("archive", {}).get("stats", {}).get("nfiles", 0))
+        except Exception:
+            pass
+    return 0
+
 def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = False) -> Dict[str, Any]:
     """
     Executes the bare-metal restore partition flashing, filesystem formatting,
@@ -28,6 +40,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         db.commit()
 
     log_to_task(task_id, f"Initializing flashing process on target device: {target_dev}")
+    log_to_task(task_id, "[PROGRESS] 5:Initializing flashing process...")
 
     # Double check if EFI UUID is collected
     if not node.efi_uuid:
@@ -54,6 +67,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
 
         # 2. Wipe target signature
         log_to_task(task_id, f"Wiping signatures on {target_dev}...")
+        log_to_task(task_id, "[PROGRESS] 10:Wiping disk signatures...")
         subprocess.check_call(["wipefs", "-a", target_dev])
 
         # 3. Partitioning via parted (GPT)
@@ -70,6 +84,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             ]
 
         log_to_task(task_id, "Creating GPT partitions...")
+        log_to_task(task_id, "[PROGRESS] 15:Creating GPT partition table...")
         subprocess.check_call(["parted", "-s", target_dev, "mklabel", "gpt"])
 
         current_offset = 1 # Start at 1MiB for alignment
@@ -106,6 +121,8 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             uuid = part.get("uuid")
 
             log_to_task(task_id, f"Formatting partition {part_dev} ({part.get('mount')}) as {fstype} with label: {label}...")
+            progress_val = 20 + int((i / len(partitions)) * 20)
+            log_to_task(task_id, f"[PROGRESS] {progress_val}:Formatting partition {part.get('mount')}...")
 
             if fstype == "vfat":
                 clean_efi_uuid = (uuid or node.efi_uuid or "458C-37BB").replace("-", "")[:8]
@@ -155,25 +172,66 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             os.makedirs(target_path, exist_ok=True)
 
             log_to_task(task_id, f"Mounting partition {part_dev} to {target_path}...")
+            log_to_task(task_id, f"[PROGRESS] 42:Mounting partition {mount_path}...")
             subprocess.check_call(["mount", part_dev, target_path])
 
         # 6. Extract Borg Backup
         repo_path = "/data/borg/fleet"
+        total_files = get_archive_total_files(db, archive_name)
         log_to_task(task_id, f"Extracting archive {archive_name} into {target_mnt}...")
+        log_to_task(task_id, "[PROGRESS] 45:Extracting backup files (initializing)...")
 
         env = os.environ.copy()
         env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
         extract_cmd = [
-            "borg", "extract", "--numeric-ids", "--sparse",
+            "borg", "extract", "--numeric-ids", "--sparse", "--progress",
             f"{repo_path}::{archive_name}"
         ]
-        # Extract files in target directory
-        subprocess.check_call(extract_cmd, cwd=target_mnt, env=env)
-        log_to_task(task_id, "Extraction completed successfully.")
+        
+        proc = subprocess.Popen(
+            extract_cmd, 
+            cwd=target_mnt, 
+            env=env, 
+            stderr=subprocess.PIPE, 
+            text=True, 
+            bufsize=1
+        )
+
+        buffer = ""
+        try:
+            while True:
+                char = proc.stderr.read(1)
+                if not char:
+                    break
+                if char == '\r' or char == '\n':
+                    line = buffer.strip()
+                    buffer = ""
+                    if "files" in line and total_files > 0:
+                        parts = line.split()
+                        try:
+                            idx = parts.index("files")
+                            curr_files = int(parts[idx - 1].replace(",", ""))
+                            pct = int((curr_files / total_files) * 45)
+                            progress_val = 45 + pct
+                            log_to_task(task_id, f"[PROGRESS] {progress_val}:Extracting files ({curr_files}/{total_files})...")
+                        except ValueError:
+                            pass
+                else:
+                    buffer += char
+            
+            proc.wait()
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, extract_cmd)
+            log_to_task(task_id, "Extraction completed successfully.")
+            log_to_task(task_id, "[PROGRESS] 90:Extraction completed successfully.")
+        except Exception as e:
+            proc.kill()
+            raise e
 
         # 6b. Recreate PostgreSQL log directories if they point to custom locations (e.g. /var/log/edge/postgresql)
         log_to_task(task_id, "Checking for custom PostgreSQL log directories to recreate...")
+        log_to_task(task_id, "[PROGRESS] 92:Checking database configuration...")
         try:
             pg_etc_dir = os.path.join(target_mnt, "etc/postgresql")
             if os.path.exists(pg_etc_dir):
@@ -289,12 +347,14 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
 
         # 9. Chroot, Grub setup
         log_to_task(task_id, "Mounting virtual filesystems...")
+        log_to_task(task_id, "[PROGRESS] 94:Mounting virtual filesystems...")
         subprocess.check_call(["mount", "--bind", "/dev", f"{target_mnt}/dev"])
         subprocess.check_call(["mount", "--bind", "/dev/pts", f"{target_mnt}/dev/pts"])
         subprocess.check_call(["mount", "--bind", "/proc", f"{target_mnt}/dev/../proc"])
         subprocess.check_call(["mount", "--bind", "/sys", f"{target_mnt}/sys"])
 
         log_to_task(task_id, f"Reinstalling GRUB bootloader on {target_dev}...")
+        log_to_task(task_id, "[PROGRESS] 96:Reinstalling GRUB bootloader...")
         # Detect if target has x86_64-efi or i386-pc modules
         target_grub_dir = os.path.join(target_mnt, "usr/lib/grub")
         is_efi = os.path.exists(os.path.join(target_grub_dir, "x86_64-efi"))
@@ -310,6 +370,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             log_to_task(task_id, "WARNING: Could not auto-detect GRUB target platform directory. Defaulting to standard grub-install...")
             grub_cmd = ["chroot", target_mnt, "grub-install", target_dev]
 
+        log_to_task(task_id, "[PROGRESS] 98:Running update-grub...")
         subprocess.check_call(grub_cmd)
         subprocess.check_call(["chroot", target_mnt, "update-grub"])
 
@@ -373,6 +434,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         subprocess.check_call(["umount", "-R", target_mnt])
 
         log_to_task(task_id, "Restore completed successfully! Target device ready to boot.", status="SUCCESS")
+        log_to_task(task_id, "[PROGRESS] 100:Restore completed successfully!", status="SUCCESS")
         return {"status": "SUCCESS"}
 
     except Exception as e:
