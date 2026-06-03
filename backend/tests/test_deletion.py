@@ -54,11 +54,9 @@ def test_node_deletion_cleanup():
     db.commit()
     
     # 2. Setup mock filesystem resources
-    # Borg repository directory (shared fleet)
     repo_dir = "/data/borg/fleet"
-    os.makedirs(repo_dir, exist_ok=True)
-    with open(os.path.join(repo_dir, "config"), "w") as f:
-        f.write("mock borg config")
+    # We do NOT create /data/borg/fleet or its config on the physical filesystem
+    # to avoid deleting/corrupting the actual repository files.
         
     # SSH keys file
     ssh_dir = "/root/.ssh"
@@ -82,8 +80,16 @@ def test_node_deletion_cleanup():
     assert any(test_key in line for line in lines)
     
     # 3. Call the delete_node FastAPI logic (or view function)
-    # We call main.delete_node directly with db session dependency and patch subprocess.run
-    with patch('subprocess.run') as mock_run:
+    # We patch os.path.exists so that delete_node believes the repository config exists.
+    # We also patch subprocess.run as mock_run.
+    real_exists = os.path.exists
+    def spy_exists(path):
+        if path == "/data/borg/fleet" or path == "/data/borg/fleet/config":
+            return True
+        return real_exists(path)
+
+    with patch('subprocess.run') as mock_run, \
+         patch('os.path.exists', side_effect=spy_exists):
         main.delete_node(node_id=node_id, db=db)
         
         # Find the borg delete call and the chown repo call
@@ -123,7 +129,6 @@ def test_node_deletion_cleanup():
     assert remaining_lines[0] == mock_key_line_1
     assert remaining_lines[1] == mock_key_line_3
     
-    # Cleanup keys file and mock repo config
+    # Cleanup keys file
     os.remove(authorized_keys_path)
-    os.remove(os.path.join(repo_dir, "config"))
     db.close()
