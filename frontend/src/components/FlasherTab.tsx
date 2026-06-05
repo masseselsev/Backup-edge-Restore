@@ -48,6 +48,7 @@ function SearchableSelect({ options, value, onChange, placeholder, disabled }: S
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -58,6 +59,15 @@ function SearchableSelect({ options, value, onChange, placeholder, disabled }: S
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   const filteredOptions = options.filter(opt =>
     opt.label.toLowerCase().includes(search.toLowerCase()) ||
@@ -95,6 +105,7 @@ function SearchableSelect({ options, value, onChange, placeholder, disabled }: S
         <div className="absolute z-50 w-full mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl max-h-60 overflow-y-auto">
           <div className="p-2 border-b border-zinc-900 sticky top-0 bg-zinc-950 z-10">
             <input
+              ref={inputRef}
               type="text"
               placeholder="Search..."
               value={search}
