@@ -60,6 +60,7 @@ services:
       - ssh-keys:/root/.ssh
       - iso-cache:/opt/data/iso_cache
       - frontend-build:/opt/frontend_build
+      - ./payload_client:/payload_client
     depends_on:
       - db
       - redis

@@ -69,7 +69,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         os.makedirs(os.path.join(payload_dir, "etc", "xdg", "autostart"), exist_ok=True)
 
         # Copy Payload Backend
-        subprocess.check_call(f"cp -r /app/../payload_client/backend/* {os.path.join(opt_offline, 'backend')}/", shell=True)
+        subprocess.check_call(f"cp -r /payload_client/backend/* {os.path.join(opt_offline, 'backend')}/", shell=True)
         
         # Inject Shared Disk Ops Module
         shutil.copy2("/app/core/disk_ops.py", os.path.join(opt_offline, "backend", "core", "disk_ops.py"))
@@ -79,13 +79,13 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             shutil.copytree("/opt/frontend_build", os.path.join(opt_offline, "backend", "frontend_build"))
 
         # Inject Systemd Service
-        svc_src = "/app/../payload_client/systemd/offline-backend.service"
+        svc_src = "/payload_client/systemd/offline-backend.service"
         svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "offline-backend.service")
         shutil.copy2(svc_src, svc_dst)
         os.symlink("/etc/systemd/system/offline-backend.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "offline-backend.service"))
 
         # Inject Kiosk Desktop Entry
-        kiosk_src = "/app/../payload_client/systemd/offline-kiosk.desktop"
+        kiosk_src = "/payload_client/systemd/offline-kiosk.desktop"
         kiosk_dst = os.path.join(payload_dir, "etc", "xdg", "autostart", "offline-kiosk.desktop")
         shutil.copy2(kiosk_src, kiosk_dst)
 
