@@ -204,7 +204,7 @@ export default function ClientIsoTab() {
                   DOWNLOAD ISO IMAGE
                 </a>
                 <p className="text-center text-[10px] text-zinc-500 mt-2">
-                  Flash this image using Rufus or balenaEtcher.
+                  Flash this image using <a href="https://rufus.ie/en/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors underline">Rufus</a> or <a href="https://etcher.balena.io/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors underline">balenaEtcher</a>.
                 </p>
               </div>
             )}
