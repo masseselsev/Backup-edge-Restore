@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
 import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
+import ClientIsoTab from './components/ClientIsoTab';
 import TaskLogsModal from './components/TaskLogsModal';
 
-type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings';
+type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('fleet');
@@ -84,6 +85,8 @@ export default function App() {
     switch (activeTab) {
       case 'flasher':
         return <FlasherTab onViewLogs={handleViewLogs} timezone={tz} />;
+      case 'clientiso':
+        return <ClientIsoTab />;
       case 'history':
         return <HistoryTab onViewLogs={handleViewLogs} timezone={tz} />;
       case 'logs':
@@ -135,6 +138,16 @@ export default function App() {
               }`}
             >
               <HardDrive size={14} /> Flasher
+            </button>
+            <button
+              onClick={() => setActiveTab('clientiso')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'clientiso'
+                  ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                  : 'text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              <Cpu size={14} /> Technician Kiosk
             </button>
             <button
               onClick={() => setActiveTab('history')}
