@@ -89,7 +89,7 @@ def get_nodes(db: Session = Depends(get_db)):
             try:
                 next_retry = redis_client.get(f"node_next_retry:{node.id}")
                 if next_retry:
-                    node_dict["next_retry_at"] = datetime.datetime.utcfromtimestamp(int(next_retry))
+                    node_dict["next_retry_at"] = datetime.datetime.fromtimestamp(int(next_retry), tz=datetime.timezone.utc)
             except Exception:
                 pass
         results.append(node_dict)
