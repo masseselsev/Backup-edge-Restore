@@ -3,7 +3,7 @@ import shutil
 import subprocess
 import json
 import logging
-from celery import shared_task
+from tasks import celery_app
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ BASE_ISO_URL = "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybr
 CACHE_DIR = "/opt/data/iso_cache"
 BASE_ISO_PATH = os.path.join(CACHE_DIR, "base.iso")
 
-@shared_task(bind=True)
+@celery_app.task(bind=True)
 def download_base_iso_task(self) -> Dict[str, Any]:
     os.makedirs(CACHE_DIR, exist_ok=True)
     if os.path.exists(BASE_ISO_PATH):
@@ -28,7 +28,7 @@ def download_base_iso_task(self) -> Dict[str, Any]:
             os.remove(BASE_ISO_PATH)
         return {"status": "FAILED", "error": str(e)}
 
-@shared_task(bind=True)
+@celery_app.task(bind=True)
 def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str, Any]:
     from tasks import log_to_task
     task_id = self.request.id

@@ -279,3 +279,4 @@ def auto_retry_bootstrap_task() -> Dict[str, Any]:
 # Import other tasks so they register with Celery automatically when this file is loaded
 from backup_tasks import run_prepare_task, run_backup_task, global_daily_prune
 from restore_tasks import flash_restore_device, purge_node_archives
+import iso_tasks
