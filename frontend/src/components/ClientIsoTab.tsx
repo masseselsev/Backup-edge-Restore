@@ -138,7 +138,7 @@ export default function ClientIsoTab() {
               <div className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
                 <div>
                   <div className="text-xs font-bold text-white">Base Debian ISO Cache</div>
-                  <div className="text-[10px] text-zinc-500">debian-live-12.5.0-amd64-xfce.iso</div>
+                  <div className="text-[10px] text-zinc-500">debian-live-13.0.0-amd64-xfce.iso</div>
                 </div>
                 {status?.base_iso_cached ? (
                   <CheckCircle className="text-emerald-400" size={20} />
