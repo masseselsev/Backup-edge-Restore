@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react';
+import TaskLogsModal from './TaskLogsModal';
 
 interface IsoStatus {
   base_iso_cached: boolean;
@@ -15,6 +16,7 @@ export default function ClientIsoTab() {
   const [isDownloadingBase, setIsDownloadingBase] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   const fetchStatus = async () => {
     try {
@@ -48,7 +50,13 @@ export default function ClientIsoTab() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to start generation');
-      setSuccessMsg('ISO Generation task started. This usually takes 1-2 minutes. Please wait...');
+      
+      if (data.task_id) {
+        setActiveTaskId(data.task_id);
+      } else {
+        setSuccessMsg('ISO Generation task started in background.');
+      }
+      
       // Start polling faster
       setTimeout(fetchStatus, 3000);
     } catch (e: any) {
@@ -208,6 +216,14 @@ export default function ClientIsoTab() {
           </div>
         </div>
       </div>
+
+      {activeTaskId && (
+        <TaskLogsModal
+          taskId={activeTaskId}
+          title="Live-USB Generation Progress"
+          onClose={() => setActiveTaskId(null)}
+        />
+      )}
     </div>
   );
 }
