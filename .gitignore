@@ -39,3 +39,7 @@ GEMINI.md
 
 # Superpowers
 .superpowers/
+
+# Celery Beat
+celerybeat-schedule*
+

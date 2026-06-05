@@ -52,14 +52,9 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
       const nodesData = await nodesRes.json();
       setNodes(nodesData);
 
-      const allHistory: BackupHistory[] = [];
-      for (const n of nodesData) {
-        const histRes = await fetch(`/api/nodes/${n.id}/history`);
-        const histData = await histRes.json();
-        allHistory.push(...histData);
-      }
-      allHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setHistory(allHistory);
+      const histRes = await fetch('/api/nodes/history');
+      const histData = await histRes.json();
+      setHistory(histData);
     } catch (e) {
       console.error(e);
     } finally {

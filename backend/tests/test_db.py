@@ -176,4 +176,53 @@ def test_upgrade_settings(db_session):
     assert s5.global_exclusions == custom_val
 
 
+def test_get_all_history(db_session):
+    """
+    Verify that get_all_history returns all records sorted by timestamp desc.
+    """
+    from routers.nodes import get_all_history
+    import datetime
+
+    # Create dummy node
+    node = models.Node(
+        hostname="test-node-hist",
+        ip_address="192.168.1.99",
+        ssh_port=22,
+        status="READY"
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+
+    # Add backup histories
+    h1 = models.BackupHistory(
+        node_id=node.id,
+        archive_name="test-archive-old",
+        original_size=100,
+        deduplicated_size=50,
+        status="SUCCESS",
+        timestamp=datetime.datetime.utcnow() - datetime.timedelta(days=1)
+    )
+    h2 = models.BackupHistory(
+        node_id=node.id,
+        archive_name="test-archive-new",
+        original_size=200,
+        deduplicated_size=100,
+        status="SUCCESS",
+        timestamp=datetime.datetime.utcnow()
+    )
+    db_session.add(h1)
+    db_session.add(h2)
+    db_session.commit()
+
+    records = get_all_history(db=db_session)
+    assert len(records) >= 2
+    # Ensure sorted by timestamp descending (h2 should be first, then h1)
+    test_records = [r for r in records if r.node_id == node.id]
+    assert len(test_records) == 2
+    assert test_records[0].archive_name == "test-archive-new"
+    assert test_records[1].archive_name == "test-archive-old"
+
+
+
 

@@ -96,6 +96,14 @@ def get_nodes(db: Session = Depends(get_db)):
     return results
 
 
+@router.get("/history", response_model=List[schemas.BackupHistoryResponse])
+def get_all_history(db: Session = Depends(get_db)):
+    """
+    Retrieves backup snapshot history records for all nodes.
+    """
+    return db.query(models.BackupHistory).order_by(models.BackupHistory.timestamp.desc()).all()
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db)):
     """

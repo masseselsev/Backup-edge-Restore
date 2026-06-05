@@ -61,6 +61,25 @@ services:
       - db
       - redis
 
+  beat:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend/Dockerfile
+    restart: always
+    command: celery -A tasks.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+      ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
+    volumes:
+      - ./backend:/app
+      - borg-data:/data/borg
+      - ssh-keys:/root/.ssh
+    depends_on:
+      - db
+      - redis
+
   borg-server:
     build:
       context: .
