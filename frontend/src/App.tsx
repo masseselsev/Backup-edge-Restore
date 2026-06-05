@@ -31,21 +31,22 @@ export default function App() {
       })
       .catch(err => console.error('Error fetching version:', err));
 
-    // Check if nodes list is empty on mount
-    fetch('/api/nodes')
+    // Fetch current settings on mount
+    fetch('/api/settings')
       .then(res => res.json())
-      .then(nodes => {
-        if (nodes.length === 0) {
-          // If empty, fetch current settings to let them check/set the IP address
-          fetch('/api/settings')
-            .then(res => res.json())
-            .then(sett => {
-              setSettings(sett);
-              setOrchestratorIp(sett.orchestrator_ip || '');
+      .then(sett => {
+        setSettings(sett);
+        setOrchestratorIp(sett.orchestrator_ip || '');
+        
+        // Check if nodes list is empty on mount
+        fetch('/api/nodes')
+          .then(res => res.json())
+          .then(nodes => {
+            if (nodes.length === 0) {
               setShowIpPromptModal(true);
-            })
-            .catch(err => console.error(err));
-        }
+            }
+          })
+          .catch(err => console.error(err));
       })
       .catch(err => console.error(err));
   }, []);
@@ -79,18 +80,19 @@ export default function App() {
   };
 
   const renderTabContent = () => {
+    const tz = settings?.timezone || 'Browser Local';
     switch (activeTab) {
       case 'flasher':
-        return <FlasherTab onViewLogs={handleViewLogs} />;
+        return <FlasherTab onViewLogs={handleViewLogs} timezone={tz} />;
       case 'history':
-        return <HistoryTab onViewLogs={handleViewLogs} />;
+        return <HistoryTab onViewLogs={handleViewLogs} timezone={tz} />;
       case 'logs':
-        return <LogsTab onViewLogs={handleViewLogs} />;
+        return <LogsTab onViewLogs={handleViewLogs} timezone={tz} />;
       case 'settings':
-        return <SettingsTab />;
+        return <SettingsTab onSettingsUpdated={setSettings} />;
       case 'fleet':
       default:
-        return <FleetTab onViewLogs={handleViewLogs} />;
+        return <FleetTab onViewLogs={handleViewLogs} timezone={tz} />;
     }
   };
 

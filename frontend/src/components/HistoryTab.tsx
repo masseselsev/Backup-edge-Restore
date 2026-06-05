@@ -25,11 +25,14 @@ interface Node {
   ip_address: string;
 }
 
+import { formatDate } from './dateUtils';
+
 interface HistoryTabProps {
   onViewLogs?: (taskId: string, title: string) => void;
+  timezone?: string;
 }
 
-export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
+export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<BackupHistory[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -188,7 +191,7 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
                   <span className="font-semibold text-white">{h.archive_name}</span>
                   {h.comment && <span className="text-[11px] text-zinc-500 mt-0.5 italic">Comment: {h.comment}</span>}
                 </td>
-                <td className="px-6 py-3.5 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
+                <td className="px-6 py-3.5 text-zinc-400">{formatDate(h.timestamp, timezone)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
                 <td className="px-6 py-3.5">

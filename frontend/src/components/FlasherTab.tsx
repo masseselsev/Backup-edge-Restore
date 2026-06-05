@@ -26,8 +26,11 @@ interface Snapshot {
   comment: string | null;
 }
 
+import { formatDate } from './dateUtils';
+
 interface FlasherTabProps {
   onViewLogs: (taskId: string, title: string) => void;
+  timezone?: string;
 }
 
 interface Option {
@@ -142,7 +145,7 @@ function SearchableSelect({ options, value, onChange, placeholder, disabled }: S
   );
 }
 
-export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
+export default function FlasherTab({ onViewLogs, timezone }: FlasherTabProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [nodes, setNodes] = useState<EdgeNode[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | ''>('');
@@ -286,7 +289,7 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
   const snapshotOptions = snapshots.map(s => ({
     value: s.archive_name,
     label: s.archive_name,
-    sublabel: `${new Date(s.timestamp).toLocaleString()} (${getFormatSize(s.original_size)})${s.comment ? ` — ${s.comment}` : ''}`,
+    sublabel: `${formatDate(s.timestamp, timezone)} (${getFormatSize(s.original_size)})${s.comment ? ` — ${s.comment}` : ''}`,
     disabled: false
   }));
 

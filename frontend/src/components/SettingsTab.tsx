@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Settings as Gear, CheckCircle } from 'lucide-react';
 
-export default function SettingsTab() {
+interface SettingsTabProps {
+  onSettingsUpdated?: (settings: any) => void;
+}
+
+export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   const [sshPort, setSshPort] = useState(12345);
   const [repoPath, setRepoPath] = useState('/data/borg');
   const [keepDaily, setKeepDaily] = useState(7);
@@ -9,6 +13,7 @@ export default function SettingsTab() {
   const [keepMonthly, setKeepMonthly] = useState(6);
   const [globalExclusions, setGlobalExclusions] = useState('/dev/*,/proc/*,/sys/*,/run/*,/mnt/*');
   const [orchestratorIp, setOrchestratorIp] = useState('');
+  const [timezone, setTimezone] = useState('Browser Local');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -25,6 +30,7 @@ export default function SettingsTab() {
         setKeepMonthly(data.keep_monthly);
         setGlobalExclusions(data.global_exclusions);
         setOrchestratorIp(data.orchestrator_ip || '');
+        setTimezone(data.timezone || 'Browser Local');
         setLoading(false);
       })
       .catch(e => {
@@ -48,11 +54,16 @@ export default function SettingsTab() {
           keep_weekly: keepWeekly,
           keep_monthly: keepMonthly,
           global_exclusions: globalExclusions,
-          orchestrator_ip: orchestratorIp
+          orchestrator_ip: orchestratorIp,
+          timezone: timezone
         })
       });
       if (res.ok) {
+        const data = await res.json();
         setSuccess(true);
+        if (onSettingsUpdated) {
+          onSettingsUpdated(data);
+        }
         setTimeout(() => setSuccess(false), 3000);
       }
     } catch (e) {
@@ -145,6 +156,26 @@ export default function SettingsTab() {
               placeholder="e.g. 192.168.222.2 (leave blank to auto-detect)"
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">System Timezone</label>
+            <select
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none cursor-pointer"
+            >
+              <option value="Browser Local">Browser Local</option>
+              <option value="UTC">UTC</option>
+              <option value="Europe/Moscow">Europe/Moscow (MSK)</option>
+              <option value="Europe/London">Europe/London (GMT/BST)</option>
+              <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+              <option value="America/New_York">America/New_York (EST/EDT)</option>
+              <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+              <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+              <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+              <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+              <option value="Asia/Yekaterinburg">Asia/Yekaterinburg (YEKT)</option>
+            </select>
           </div>
         </div>
 

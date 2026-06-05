@@ -19,9 +19,10 @@ interface Node {
 
 interface FleetTabProps {
   onViewLogs: (taskId: string, title: string) => void;
+  timezone?: string;
 }
 
-export default function FleetTab({ onViewLogs }: FleetTabProps) {
+export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -243,6 +244,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
       onShowProvision={setShowProvisionModal}
       onShowBackup={setShowBackupModal}
       onDeleteNode={handleDeleteNode}
+      timezone={timezone}
     />
   );
 

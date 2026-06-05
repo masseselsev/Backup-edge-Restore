@@ -45,5 +45,6 @@ def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db)
     settings.keep_monthly = payload.keep_monthly
     settings.global_exclusions = payload.global_exclusions
     settings.orchestrator_ip = payload.orchestrator_ip
+    settings.timezone = payload.timezone
     db.commit()
     return settings

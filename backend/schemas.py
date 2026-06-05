@@ -10,6 +10,7 @@ class SettingsBase(BaseModel):
     keep_monthly: int = Field(default=6, ge=0)
     global_exclusions: str = Field(default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/blobstore/*,/var/spool/edge/*,/var/log/journal/*,/var/log/**/*.gz,/var/log/**/*.1')
     orchestrator_ip: str = Field(default='')
+    timezone: str = Field(default='Browser Local')
 
 class SettingsResponse(SettingsBase):
     id: int

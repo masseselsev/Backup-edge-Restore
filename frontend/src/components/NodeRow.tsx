@@ -1,5 +1,6 @@
 import React from 'react';
 import { Cpu, CheckCircle, AlertTriangle, Settings as Gear, ShieldAlert, Trash2 } from 'lucide-react';
+import { formatDate } from './dateUtils';
 
 export interface Node {
   id: number;
@@ -25,6 +26,7 @@ interface NodeRowProps {
   onShowProvision: (node: Node) => void;
   onShowBackup: (node: Node) => void;
   onDeleteNode: (nodeId: number, hostname: string) => void;
+  timezone?: string;
 }
 
 export function NodeRow({
@@ -37,6 +39,7 @@ export function NodeRow({
   onShowProvision,
   onShowBackup,
   onDeleteNode,
+  timezone,
 }: NodeRowProps) {
   const [timeLeft, setTimeLeft] = React.useState<number>(0);
 
@@ -134,7 +137,7 @@ export function NodeRow({
       </td>
       <td className="px-4 py-2.5">{renderStatusButton()}</td>
       <td className="px-4 py-2.5 text-zinc-400">
-        {node.last_backup ? new Date(node.last_backup).toLocaleString() : 'Never'}
+        {node.last_backup ? formatDate(node.last_backup, timezone) : 'Never'}
       </td>
       <td className="px-4 py-2.5 text-right flex items-center justify-end gap-2 text-zinc-300">
         <button

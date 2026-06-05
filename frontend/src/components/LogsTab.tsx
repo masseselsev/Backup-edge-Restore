@@ -16,11 +16,14 @@ interface SystemLog {
   created_at: string;
 }
 
+import { formatDate } from './dateUtils';
+
 interface LogsTabProps {
   onViewLogs: (taskId: string, title: string) => void;
+  timezone?: string;
 }
 
-export default function LogsTab({ onViewLogs }: LogsTabProps) {
+export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
   const [tasks, setTasks] = useState<TaskLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,7 +186,7 @@ export default function LogsTab({ onViewLogs }: LogsTabProps) {
                       <td className="px-4 py-2.5 font-semibold text-white capitalize">{task.task_type.toLowerCase()}</td>
                       <td className="px-4 py-2.5">{getStatusBadge(task.status)}</td>
                       <td className="px-4 py-2.5 text-zinc-400">
-                        {new Date(task.created_at).toLocaleString()}
+                        {formatDate(task.created_at, timezone)}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <button
