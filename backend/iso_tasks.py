@@ -184,15 +184,15 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
         # 6. Repack ISO
         log_to_task(task_id, "[PROGRESS] 85:Repacking Live-USB ISO...")
-        output_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
-        if os.path.exists(output_iso):
-            os.remove(output_iso)
+        if os.path.exists(CLIENT_ISO_PATH):
+            os.remove(CLIENT_ISO_PATH)
 
-        xorriso_cmd = [
-            "xorriso", "-as", "mkisofs",
+        subprocess.check_call([
+            "xorriso",
+            "-as", "mkisofs",
             "-r", "-J", "-joliet-long",
             "-l", "-cache-inodes",
-            "-isohybrid-mbr", os.path.join(iso_unpacked, "isolinux", "isohdpfx.bin"),
+            "-isohybrid-mbr", "/usr/lib/ISOLINUX/isohdpfx.bin",
             "-partition_offset", "16",
             "-A", "Borg-Restore-Technician-Client",
             "-b", "isolinux/isolinux.bin",
@@ -201,10 +201,9 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             "-eltorito-alt-boot",
             "-e", "boot/grub/efi.img",
             "-no-emul-boot", "-isohybrid-gpt-basdat", "-isohybrid-apm-hfsplus",
-            "-o", output_iso,
+            "-o", CLIENT_ISO_PATH,
             iso_unpacked
-        ]
-        subprocess.check_call(xorriso_cmd)
+        ])
 
         log_to_task(task_id, "[PROGRESS] 100:Client ISO generated successfully!", status="SUCCESS")
         return {"status": "SUCCESS"}
