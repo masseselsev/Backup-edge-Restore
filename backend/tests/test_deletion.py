@@ -5,7 +5,7 @@ from unittest.mock import patch
 from sqlalchemy.orm import Session
 from database import SessionLocal
 import models
-import main
+from routers.nodes import delete_node
 
 def test_node_deletion_cleanup():
     """
@@ -90,7 +90,7 @@ def test_node_deletion_cleanup():
 
     with patch('subprocess.run') as mock_run, \
          patch('os.path.exists', side_effect=spy_exists):
-        main.delete_node(node_id=node_id, db=db)
+        delete_node(node_id=node_id, db=db)
         
         # Find the borg delete call and the chown repo call
         borg_delete_call = None

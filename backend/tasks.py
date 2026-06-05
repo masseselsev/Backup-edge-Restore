@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Node, BackupHistory, Settings
 from ansible_utils import run_ansible_playbook
-from restore_logic import execute_restore
 
 from celery import Celery
 from celery.schedules import crontab
@@ -21,11 +20,18 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 celery_app = Celery("tasks", broker=REDIS_URL, backend=REDIS_URL)
 
-# Configure Celery Beat for global daily prune
+import redis
+redis_client = redis.Redis.from_url(REDIS_URL)
+
+# Configure Celery Beat for global daily prune and auto retry
 celery_app.conf.beat_schedule = {
     'global-daily-prune-task': {
-        'task': 'tasks.global_daily_prune',
+        'task': 'backup_tasks.global_daily_prune',
         'schedule': crontab(hour=3, minute=0), # Run at 3:00 AM daily
+    },
+    'auto-retry-bootstrap-task': {
+        'task': 'tasks.auto_retry_bootstrap_task',
+        'schedule': 300.0, # Run every 5 minutes (300 seconds)
     },
 }
 celery_app.conf.timezone = 'UTC'
@@ -33,11 +39,6 @@ celery_app.conf.timezone = 'UTC'
 def log_to_task(task_id: str, message: str, status: Optional[str] = None) -> None:
     """
     Appends a log line to the specified TaskLog record in the database.
-
-    Args:
-        task_id: The TaskLog UUID.
-        message: The log message to append.
-        status: Optional status to explicitly set (e.g. SUCCESS, FAILED).
     """
     db: Session = SessionLocal()
     try:
@@ -58,25 +59,16 @@ def log_to_task(task_id: str, message: str, status: Optional[str] = None) -> Non
 def fix_ssh_permissions() -> None:
     """
     Ensures that the orchestrator SSH keys and authorized_keys file
-    have correct permissions and ownership. The SSH directory and files
-    must be readable by user borg (uid 1000) for the SSH daemon in borg-server
-    to successfully validate keys.
+    have correct permissions and ownership.
     """
     ssh_dir = "/root/.ssh"
     auth_keys = os.path.join(ssh_dir, "authorized_keys")
     try:
         if os.path.exists(ssh_dir):
-            # Change ownership of all files to 1000:1000 (user borg)
-            # root can still read/write everything, but borg needs access
             subprocess.run(["chown", "-R", "1000:1000", ssh_dir], check=True)
-            # Directory must be 0700
             os.chmod(ssh_dir, 0o700)
-            
-            # Ensure authorized_keys is 0600
             if os.path.exists(auth_keys):
                 os.chmod(auth_keys, 0o600)
-                
-            # Ensure private key is 0600
             priv_key = os.path.join(ssh_dir, "id_ed25519")
             if os.path.exists(priv_key):
                 os.chmod(priv_key, 0o600)
@@ -86,8 +78,6 @@ def fix_ssh_permissions() -> None:
 def ensure_orchestrator_ssh_key() -> str:
     """
     Ensures that the Orchestrator's SSH private/public keypair exists in /root/.ssh.
-    Generates it if it is missing.
-    Returns the public key content.
     """
     ssh_dir = "/root/.ssh"
     priv_key = os.path.join(ssh_dir, "id_ed25519")
@@ -107,7 +97,6 @@ def ensure_orchestrator_ssh_key() -> str:
     try:
         with open(pub_key, "r") as f:
             pub_key_content = f.read().strip()
-        # Ensure correct ownership and permissions for the shared SSH volume
         fix_ssh_permissions()
         return pub_key_content
     except Exception as e:
@@ -115,9 +104,8 @@ def ensure_orchestrator_ssh_key() -> str:
         raise e
 
 def fix_repo_permissions(repo_path: str) -> None:
-    """Ensures repository files and their parent directories are owned by user borg (1000:1000) for ssh write access."""
+    """Ensures repository files and their parent directories are owned by user borg (1000:1000)."""
     try:
-        # Ensure parent directory (/data/borg) is writeable by borg (1000)
         parent_dir = os.path.dirname(repo_path)
         if os.path.exists(parent_dir):
             subprocess.run(["chown", "1000:1000", parent_dir], check=True)
@@ -128,18 +116,11 @@ def fix_repo_permissions(repo_path: str) -> None:
     except Exception as e:
         logger.error(f"Failed to chown repo {repo_path}: {str(e)}")
 
+
 @celery_app.task(bind=True)
 def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: str) -> Dict[str, Any]:
     """
     Celery task to run the Node bootstrapping process using Ansible.
-
-    Args:
-        node_id: ID of the Node database record.
-        ssh_password: Temporary SSH password for bootstrap.
-        bootstrap_user: Temporary SSH user for bootstrap.
-
-    Returns:
-        Status result dictionary.
     """
     task_id = self.request.id
     db: Session = SessionLocal()
@@ -172,6 +153,27 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     if res["status"] == "SUCCESS":
         ssh_pub_key = res["parsed_data"].get("ssh_pub_key")
         node.ssh_pub_key = ssh_pub_key
+        
+        # Save os_version
+        os_ver = res["parsed_data"].get("os_version")
+        if os_ver:
+            node.os_version = os_ver
+
+        # Update hostname if detected
+        detected_hostname = res["parsed_data"].get("hostname")
+        if detected_hostname:
+            existing_host = db.query(Node).filter(Node.hostname == detected_hostname, Node.id != node.id).first()
+            if existing_host:
+                node.hostname = f"{detected_hostname}-{node.id}"
+            else:
+                node.hostname = detected_hostname
+
+        # Remove temporary credentials from Redis
+        try:
+            redis_client.delete(f"bootstrap_creds:{node.id}")
+        except Exception as e:
+            logger.error(f"Error deleting Redis credentials: {str(e)}")
+
         is_prep = res["parsed_data"].get("prepared") == "true"
         if is_prep:
             node.disk_type = res["parsed_data"].get("disk_type", "UNKNOWN")
@@ -204,16 +206,22 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
                 with open(authorized_keys_path, "a") as f:
                     f.write(entry)
                     
-            # Ensure correct ownership and permissions for the shared SSH volume
             fix_ssh_permissions()
             log_to_task(task_id, "Borg SSH authorized_keys updated with forced command restriction.", status="SUCCESS")
         except Exception as e:
             log_to_task(task_id, f"WARNING: Failed to append key to authorized_keys: {str(e)}", status="FAILED")
     else:
-        node.status = "NEEDS_BOOTSTRAP"
+        # Check if unreachable / connection timed out
+        is_offline = False
+        task_log_obj = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+        if task_log_obj and task_log_obj.log_output:
+            log_out_upper = task_log_obj.log_output.upper()
+            if "UNREACHABLE" in log_out_upper or "COULD NOT RESOLVE" in log_out_upper or "CONNECTION TIMEOUT" in log_out_upper or "CONNECT TO HOST" in log_out_upper:
+                is_offline = True
+        
+        node.status = "OFFLINE" if is_offline else "NEEDS_BOOTSTRAP"
         db.commit()
         error_msg = "Bootstrap task failed."
-        task_log_obj = db.query(TaskLog).filter(TaskLog.id == task_id).first()
         if task_log_obj and task_log_obj.log_output and "OS_UNSUPPORTED" in task_log_obj.log_output:
             for line in task_log_obj.log_output.splitlines():
                 if "OS_UNSUPPORTED" in line:
@@ -224,256 +232,33 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     db.close()
     return res
 
-@celery_app.task(bind=True)
-def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
-    """
-    Celery task to run the Auto-Prepare disk labels playbook on the node.
 
-    Args:
-        node_id: ID of the Node database record.
-
-    Returns:
-        Status result dictionary.
+@celery_app.task
+def auto_retry_bootstrap_task() -> Dict[str, Any]:
     """
-    task_id = self.request.id
+    Periodic task to check for OFFLINE nodes, retrieve credentials from Redis,
+    and trigger bootstrap tasks for them.
+    """
     db: Session = SessionLocal()
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        db.close()
-        return {"status": "FAILED", "error": "Node not found"}
-
-    task_log = TaskLog(id=task_id, task_type="PREPARE", status="RUNNING", log_output="")
-    db.add(task_log)
-    db.commit()
-
-    log_to_task(task_id, f"Starting auto-prepare for {node.hostname} ({node.ip_address})")
-
-    # Run playbook (uses Orchestrator's SSH control key)
-    # Orchestrator SSH control key is assumed to be in /root/.ssh/id_ed25519
-    res = run_ansible_playbook(
-        task_id=task_id,
-        playbook_name="prepare.yml",
-        host_ip=node.ip_address,
-        ssh_port=node.ssh_port,
-        extra_vars={},
-        ssh_key_path="/root/.ssh/id_ed25519"
-    )
-
-    if res["status"] == "SUCCESS":
-        node.disk_type = res["parsed_data"].get("disk_type", "UNKNOWN")
-        node.network_iface = res["parsed_data"].get("network_iface")
-        node.efi_uuid = res["parsed_data"].get("efi_uuid")
-        if "partition_layout" in res["parsed_data"]:
-            node.partition_layout = res["parsed_data"]["partition_layout"]
-        node.status = "READY"
-        db.commit()
-        log_to_task(task_id, f"Auto-prepare finished. Disk type: {node.disk_type}, EFI UUID: {node.efi_uuid}, Interface: {node.network_iface}", status="SUCCESS")
-    else:
-        node.status = "NEEDS_FIX"
-        db.commit()
-        log_to_task(task_id, "Auto-prepare task failed.", status="FAILED")
-
-    db.close()
-    return res
-
-@celery_app.task(bind=True)
-def run_backup_task(self, node_id: int) -> Dict[str, Any]:
-    """
-    Triggers remote backup execution on the node pushing to the central Borg server,
-    then updates Database history.
-
-    Args:
-        node_id: ID of the Node database record.
-
-    Returns:
-        Status dictionary.
-    """
-    task_id = self.request.id
-    db: Session = SessionLocal()
-    node = db.query(Node).filter(Node.id == node_id).first()
-    settings = db.query(Settings).first()
-    if not settings:
-        settings = Settings()
-        db.add(settings)
-        db.commit()
-
-    if not node:
-        db.close()
-        return {"status": "FAILED", "error": "Node not found"}
-
-    task_log = TaskLog(id=task_id, task_type="BACKUP", status="RUNNING", log_output="")
-    db.add(task_log)
-    db.commit()
-
-    log_to_task(task_id, f"Initiating Borg backup for {node.hostname}...")
-
-    # Determine Orchestrator internal/external IP from Settings, environment, or host default route IP
-    orchestrator_ip = settings.orchestrator_ip or os.getenv("ORCHESTRATOR_IP")
-    if not orchestrator_ip:
-        try:
-            route_cmd = f"ip route get {node.ip_address}"
-            route_out = subprocess.check_output(route_cmd, shell=True, text=True)
-            orchestrator_ip = route_out.split("src")[1].split()[0]
-        except Exception:
-            orchestrator_ip = "127.0.0.1"
-
-    archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-    borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/fleet"
-
-    # Ensure the parent directory is writeable by user borg inside the containers
-    fix_repo_permissions("/data/borg/fleet")
-
-    # Ensure the Borg repository is initialized on central server
-    init_cmd = [
-        "ssh", "-o", "StrictHostKeyChecking=no",
-        "-p", str(node.ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        f"root@{node.ip_address}",
-        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg init --encryption=repokey {borg_repo_url}"
-    ]
-    log_to_task(task_id, "Checking/Initializing Borg repository...")
     try:
-        res_init = subprocess.run(init_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        # Borg returns 2 if the repository already exists, which is a success state for us.
-        # Otherwise, if it returns non-zero/non-two, we log the error.
-        if res_init.returncode not in (0, 2):
-            log_to_task(task_id, f"WARNING: Repository initialization status: {res_init.stderr.strip()}")
+        offline_nodes = db.query(Node).filter(Node.status == "OFFLINE").all()
+        triggered = []
+        for node in offline_nodes:
+            creds_json = redis_client.get(f"bootstrap_creds:{node.id}")
+            if creds_json:
+                creds = json.loads(creds_json)
+                node.status = "NEEDS_BOOTSTRAP"
+                db.commit()
+                run_bootstrap_task.delay(node.id, creds["bootstrap_password"], creds["bootstrap_user"])
+                triggered.append(node.id)
+        return {"status": "SUCCESS", "triggered_node_ids": triggered}
     except Exception as e:
-        log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
-
-    # Format global exclusions correctly as multiple --exclude options
-    exclude_args = []
-    if settings.global_exclusions:
-        for x in settings.global_exclusions.split(","):
-            ex = x.strip()
-            if ex:
-                exclude_args.append(f"--exclude '{ex}'")
-    exclude_str = " ".join(exclude_args)
-
-    # Connect via SSH to the edge node and execute Borg backup pushing to Central server
-    ssh_cmd = [
-        "ssh", "-o", "StrictHostKeyChecking=no",
-        "-p", str(node.ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        f"root@{node.ip_address}",
-        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg create --json --stats {borg_repo_url}::{archive_name} / {exclude_str}"
-    ]
-
-    log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
-
-    try:
-        process = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate()
-
-        log_to_task(task_id, f"Remote execution stdout:\n{stdout}")
-        if stderr:
-            log_to_task(task_id, f"Remote execution stderr:\n{stderr}")
-
-        if process.returncode in (0, 1):
-            if process.returncode == 1:
-                log_to_task(task_id, "WARNING: Backup completed with warnings (some files changed during backup or were skipped).")
-            # Parse sizes from JSON
-            original_size = 0
-            deduplicated_size = 0
-            try:
-                data = json.loads(stdout)
-                archive_stats = data.get("archive", {}).get("stats", {})
-                original_size = archive_stats.get("original_size", 0)
-                deduplicated_size = archive_stats.get("deduplicated_size", 0)
-            except Exception:
-                # If stdout is not direct JSON but includes logs, search for lines
-                log_to_task(task_id, "Failed to parse JSON directly; estimating size metrics.")
-
-            history = BackupHistory(
-                node_id=node.id,
-                archive_name=archive_name,
-                original_size=original_size,
-                deduplicated_size=deduplicated_size,
-                status="SUCCESS",
-                log_output=stdout + "\n" + stderr
-            )
-            db.add(history)
-            node.last_backup = datetime.utcnow()
-            db.commit()
-
-            log_to_task(task_id, "Backup completed successfully.", status="SUCCESS")
-            return {"status": "SUCCESS", "archive": archive_name}
-        else:
-            history = BackupHistory(
-                node_id=node.id,
-                archive_name=archive_name,
-                original_size=0,
-                deduplicated_size=0,
-                status="FAILED",
-                log_output=stdout + "\n" + stderr
-            )
-            db.add(history)
-            db.commit()
-            log_to_task(task_id, "Backup execution failed.", status="FAILED")
-            return {"status": "FAILED", "error": stderr}
-    except Exception as e:
-        log_to_task(task_id, f"Exception occurred during backup task: {str(e)}", status="FAILED")
+        logger.error(f"Error in auto_retry_bootstrap_task: {str(e)}")
         return {"status": "FAILED", "error": str(e)}
     finally:
         db.close()
 
-@celery_app.task
-def global_daily_prune() -> Dict[str, Any]:
-    """
-    Celery scheduled cron task running at 3:00 AM daily.
-    Executes borg prune on all node repositories locally inside the shared volume.
-    """
-    db: Session = SessionLocal()
-    settings = db.query(Settings).first()
-    if not settings:
-        settings = Settings()
 
-    nodes = db.query(Node).all()
-    results = {}
-
-    repo_path = "/data/borg/fleet"
-    if os.path.exists(repo_path):
-        env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
-
-        for node in nodes:
-            cmd = [
-                "borg", "prune",
-                "--keep-daily", str(settings.keep_daily),
-                "--keep-weekly", str(settings.keep_weekly),
-                "--keep-monthly", str(settings.keep_monthly),
-                "--glob-archives", f"{node.hostname}-*",
-                repo_path
-            ]
-
-            try:
-                res = subprocess.run(cmd, env=env, capture_output=True, text=True)
-                if res.returncode == 0:
-                    results[node.hostname] = "PRUNED"
-                    logger.info(f"Successfully pruned repository for {node.hostname}")
-                else:
-                    results[node.hostname] = f"FAILED: {res.stderr}"
-                    logger.error(f"Failed to prune repository for {node.hostname}: {res.stderr}")
-            except Exception as e:
-                results[node.hostname] = f"EXCEPTION: {str(e)}"
-                logger.error(f"Exception pruning {node.hostname}: {str(e)}")
-        
-        # Compact the repository to reclaim space after pruning
-        try:
-            logger.info("Starting Borg repository compaction after prune...")
-            compact_cmd = ["borg", "compact", repo_path]
-            res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
-            if res_compact.returncode == 0:
-                logger.info("Successfully compacted Borg repository after daily prune.")
-            else:
-                logger.error(f"Failed to compact Borg repository after daily prune: {res_compact.stderr}")
-        except Exception as e:
-            logger.error(f"Exception compacting Borg repository: {str(e)}")
-
-        fix_repo_permissions(repo_path)
-
-    db.close()
-    return results
-
+# Import other tasks so they register with Celery automatically when this file is loaded
+from backup_tasks import run_prepare_task, run_backup_task, global_daily_prune
 from restore_tasks import flash_restore_device, purge_node_archives
-

@@ -23,6 +23,7 @@ class NodeCreate(BaseModel):
     ssh_port: int = 22
     bootstrap_user: str = "root"
     bootstrap_password: str
+    auto_detect_hostname: Optional[bool] = False
 
 class NodeResponse(BaseModel):
     id: int
@@ -35,6 +36,7 @@ class NodeResponse(BaseModel):
     network_iface: Optional[str] = None
     efi_uuid: Optional[str] = None
     partition_layout: Optional[List[dict]] = None
+    os_version: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -48,9 +50,13 @@ class BackupHistoryResponse(BaseModel):
     deduplicated_size: int
     status: str
     log_output: Optional[str] = None
+    comment: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class BackupTriggerRequest(BaseModel):
+    comment: Optional[str] = None
 
 class TaskLogResponse(BaseModel):
     id: str
@@ -70,6 +76,11 @@ class RestoreRequest(BaseModel):
     override_mismatch: bool = False
     keep_network_configs: bool = True
     wipe_mac_bindings: bool = False
+
+
+class NodeProvisionRequest(BaseModel):
+    bootstrap_user: str = "root"
+    bootstrap_password: str
 
 
 class DeviceResponse(BaseModel):

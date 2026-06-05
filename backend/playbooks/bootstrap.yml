@@ -187,10 +187,20 @@
           prepared="true"
         fi
 
+        os_name="Unknown"
+        if [ -f /etc/os-release ]; then
+          . /etc/os-release
+          os_name="$NAME $VERSION_ID"
+        elif [ -f /etc/debian_version ]; then
+          os_name="Debian $(cat /etc/debian_version)"
+        fi
+
         echo "DISK_TYPE:$disk_type"
         echo "EFI_UUID:$efi_uuid"
         echo "INTERFACE:$net_iface"
         echo "PREPARED:$prepared"
+        echo "HOSTNAME:$(hostname)"
+        echo "OS_VERSION:$os_name"
         echo "PARTITION_LAYOUT_JSON:$(lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID,PARTUUID 2>/dev/null | tr -d '\n')"
       register: sys_info
       changed_when: false

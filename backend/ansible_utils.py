@@ -106,6 +106,10 @@ def run_ansible_playbook(
                     parsed_data["network_iface"] = line.split("INTERFACE:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "PREPARED:" in line:
                     parsed_data["prepared"] = line.split("PREPARED:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                if "HOSTNAME:" in line:
+                    parsed_data["hostname"] = line.split("HOSTNAME:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                if "OS_VERSION:" in line:
+                    parsed_data["os_version"] = line.split("OS_VERSION:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "PARTITION_LAYOUT_JSON:" in line:
                     parsed_data["partition_layout_raw"] = line.split("PARTITION_LAYOUT_JSON:")[1].strip()
 

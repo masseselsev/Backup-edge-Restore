@@ -36,6 +36,7 @@ class Node(Base):
     ssh_pub_key = Column(Text, nullable=True)
     efi_uuid = Column(String, nullable=True) # Used to maintain exact ESP filesystem UUID during flasher restore
     partition_layout = Column(JSON, nullable=True)
+    os_version = Column(String, nullable=True)
 
 
 class BackupHistory(Base):
@@ -52,6 +53,7 @@ class BackupHistory(Base):
     deduplicated_size = Column(BigInteger, nullable=False) # Deduplicated storage size
     status = Column(String, nullable=False) # SUCCESS, FAILED
     log_output = Column(Text, nullable=True)
+    comment = Column(Text, nullable=True)
 
 
 class TaskLog(Base):

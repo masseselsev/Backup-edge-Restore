@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertTriangle, Server, HardDrive, RefreshCw, Play, Terminal as TermIcon, FileText } from 'lucide-react';
+import { AlertTriangle, Server, HardDrive, RefreshCw, Play } from 'lucide-react';
 
 interface Device {
   name: string;
@@ -10,7 +10,7 @@ interface Device {
   is_usb?: boolean;
 }
 
-interface Node {
+interface EdgeNode {
   id: number;
   hostname: string;
   disk_type: string;
@@ -22,15 +22,117 @@ interface Snapshot {
   archive_name: string;
   timestamp: string;
   original_size: number;
+  comment: string | null;
 }
 
 interface FlasherTabProps {
   onViewLogs: (taskId: string, title: string) => void;
 }
 
+interface Option {
+  value: string | number;
+  label: string;
+  sublabel?: string;
+  disabled?: boolean;
+}
+
+interface SearchableSelectProps {
+  options: Option[];
+  value: string | number;
+  onChange: (val: any) => void;
+  placeholder: string;
+  disabled?: boolean;
+}
+
+function SearchableSelect({ options, value, onChange, placeholder, disabled }: SearchableSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as globalThis.Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredOptions = options.filter(opt =>
+    opt.label.toLowerCase().includes(search.toLowerCase()) ||
+    (opt.sublabel && opt.sublabel.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const selectedOption = options.find(opt => opt.value === value);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex justify-between items-center px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none text-left disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <span className="truncate">
+          {selectedOption ? (
+            <>
+              <span className="font-semibold text-zinc-100">{selectedOption.label}</span>
+              {selectedOption.sublabel && (
+                <span className="text-xs text-zinc-400 ml-2 font-normal">
+                  ({selectedOption.sublabel})
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-zinc-500">{placeholder}</span>
+          )}
+        </span>
+        <span className="ml-2 text-zinc-500">▼</span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+          <div className="p-2 border-b border-zinc-900 sticky top-0 bg-zinc-950 z-10">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded text-white text-xs focus:outline-none focus:border-indigo-600"
+            />
+          </div>
+          <div className="py-1">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-zinc-500">No results found</div>
+            ) : (
+              filteredOptions.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={opt.disabled}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setIsOpen(false);
+                    setSearch('');
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs flex flex-col hover:bg-zinc-800 transition-colors disabled:opacity-40 disabled:hover:bg-transparent ${opt.value === value ? 'bg-indigo-600/30' : ''}`}
+                >
+                  <span className="font-semibold text-zinc-100">{opt.label}</span>
+                  {opt.sublabel && <span className="text-[10px] text-zinc-400 mt-0.5">{opt.sublabel}</span>}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
   const [devices, setDevices] = useState<Device[]>([]);
-  const [nodes, setNodes] = useState<Node[]>([]);
+  const [nodes, setNodes] = useState<EdgeNode[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | ''>('');
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState<string>('');
@@ -76,7 +178,6 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
     try {
       const res = await fetch(`/api/nodes/${nodeId}/history`);
       const data = await res.json();
-      // Filter for successful backups
       setSnapshots(data.filter((h: any) => h.status === 'SUCCESS'));
     } catch (e) {
       console.error(e);
@@ -99,7 +200,6 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
     }
   }, [selectedNodeId]);
 
-  // Handle mismatch check
   useEffect(() => {
     if (selectedNodeId && selectedDevice) {
       const node = nodes.find(n => n.id === Number(selectedNodeId));
@@ -143,7 +243,6 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to trigger restore');
 
-      // Trigger log viewing immediately
       if (data.task_id) {
         onViewLogs(data.task_id, `Restore Flashing on ${selectedDevice}`);
       }
@@ -162,6 +261,28 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
 
   const selectedNode = nodes.find(n => n.id === Number(selectedNodeId));
 
+  // Options converters
+  const nodeOptions = nodes.map(n => ({
+    value: n.id,
+    label: n.hostname,
+    sublabel: `Original Disk: ${n.disk_type}${n.efi_uuid ? '' : ' [NO EFI UUID]'}`,
+    disabled: false
+  }));
+
+  const snapshotOptions = snapshots.map(s => ({
+    value: s.archive_name,
+    label: s.archive_name,
+    sublabel: `${new Date(s.timestamp).toLocaleString()} (${getFormatSize(s.original_size)})${s.comment ? ` — ${s.comment}` : ''}`,
+    disabled: false
+  }));
+
+  const deviceOptions = devices.map(d => ({
+    value: d.name,
+    label: d.name,
+    sublabel: `${d.model} (${getFormatSize(d.size)} - ${d.disk_type} ${d.rotational ? 'HDD' : 'SSD'}${d.is_usb ? ' [USB]' : ''})`,
+    disabled: false
+  }));
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Configuration & Trigger form */}
@@ -175,20 +296,15 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
           <form onSubmit={handleStartFlash} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">1. Select Target Node (Data Source)</label>
-              <select
+              <SearchableSelect
+                options={nodeOptions}
                 value={selectedNodeId}
-                onChange={(e) => setSelectedNodeId(e.target.value ? Number(e.target.value) : '')}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="">-- Choose Node --</option>
-                {nodes.map(n => (
-                  <option key={n.id} value={n.id}>
-                    {n.hostname} (Original Disk: {n.disk_type}) {n.efi_uuid ? '' : '[NO EFI UUID]'}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedNodeId(val)}
+                placeholder="-- Choose Target Node --"
+                disabled={loadingNodes}
+              />
               {selectedNode && !selectedNode.efi_uuid && (
-                <div className="mt-1 text-xs text-rose-400 flex items-center gap-1">
+                <div className="mt-1.5 text-xs text-rose-400 flex items-center gap-1.5">
                   <AlertTriangle size={12} /> Auto-Prepare has not been run on this node. Bare-metal restore is locked.
                 </div>
               )}
@@ -197,35 +313,25 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
             {selectedNodeId && (
               <div>
                 <label className="block text-xs font-semibold text-zinc-400 mb-1.5">2. Select Backup Snapshot</label>
-                <select
+                <SearchableSelect
+                  options={snapshotOptions}
                   value={selectedSnapshot}
-                  onChange={(e) => setSelectedSnapshot(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="">-- Choose Archive --</option>
-                  {snapshots.map(s => (
-                    <option key={s.id} value={s.archive_name}>
-                      {s.archive_name} ({getFormatSize(s.original_size)})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setSelectedSnapshot(val)}
+                  placeholder="-- Choose Snapshot Archive --"
+                  disabled={loadingSnapshots}
+                />
               </div>
             )}
 
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">3. Select Target Flash Block Device</label>
-              <select
+              <SearchableSelect
+                options={deviceOptions}
                 value={selectedDevice}
-                onChange={(e) => setSelectedDevice(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="">-- Choose Physical Target --</option>
-                {devices.map(d => (
-                  <option key={d.name} value={d.name}>
-                    {d.name} - {d.model} ({getFormatSize(d.size)} - {d.disk_type} {d.rotational ? 'HDD' : 'SSD'}{d.is_usb ? ' [USB]' : ''})
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedDevice(val)}
+                placeholder="-- Choose Physical Target Drive --"
+                disabled={scanning}
+              />
             </div>
 
             {/* Mismatch warnings */}
@@ -253,6 +359,7 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
                 </label>
               </div>
             )}
+
             {/* Network configuration restore options */}
             <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
               <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Network Settings</h4>

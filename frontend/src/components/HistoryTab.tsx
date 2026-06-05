@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight } from 'lucide-react';
+import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight, ChevronDown, Search, Folder, FolderOpen, Cpu } from 'lucide-react';
 
 interface Stats {
   total_nodes: number;
@@ -16,11 +16,13 @@ interface BackupHistory {
   original_size: number;
   deduplicated_size: number;
   status: string;
+  comment: string | null;
 }
 
 interface Node {
   id: number;
   hostname: string;
+  ip_address: string;
 }
 
 interface HistoryTabProps {
@@ -34,7 +36,11 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
   const [loading, setLoading] = useState(true);
   const [purgeTarget, setPurgeTarget] = useState<Node | null>(null);
   const [purging, setPurging] = useState<Record<number, boolean>>({});
-  const [expandedNodes, setExpandedNodes] = useState<Record<number, boolean>>({});
+  
+  // Search & Grouping state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [grouping, setGrouping] = useState<'flat' | 'prefix' | 'subnet'>('flat');
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
   const fetchStats = useCallback(async () => {
     try {
@@ -65,8 +71,8 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
     fetchStats();
   }, [fetchStats]);
 
-  const toggleNode = (nodeId: number) => {
-    setExpandedNodes(prev => ({ ...prev, [nodeId]: !prev[nodeId] }));
+  const toggleExpand = (key: string) => {
+    setExpandedNodes(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handlePurge = async (node: Node) => {
@@ -122,27 +128,201 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
     return getFormatSize(Math.max(0, diff));
   };
 
-  // Group history by node
-  const groupedHistory: Record<number, BackupHistory[]> = {};
-  for (const h of history) {
-    if (!groupedHistory[h.node_id]) groupedHistory[h.node_id] = [];
-    groupedHistory[h.node_id].push(h);
-  }
+  // Node lookup
+  const nodesMap = React.useMemo(() => {
+    const map: Record<number, Node> = {};
+    nodes.forEach(n => { map[n.id] = n; });
+    return map;
+  }, [nodes]);
 
-  const nodesWithHistory = nodes.filter(n => groupedHistory[n.id]?.length);
+  // Filtering history
+  const filteredHistory = React.useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return history.filter(h => {
+      const node = nodesMap[h.node_id];
+      const hostname = node ? node.hostname.toLowerCase() : '';
+      return (
+        hostname.includes(q) ||
+        h.archive_name.toLowerCase().includes(q) ||
+        h.status.toLowerCase().includes(q) ||
+        (h.comment && h.comment.toLowerCase().includes(q))
+      );
+    });
+  }, [history, searchQuery, nodesMap]);
 
-  const getNodeStatusCounts = (nodeId: number) => {
-    const items = groupedHistory[nodeId] || [];
-    const success = items.filter(h => h.status === 'SUCCESS').length;
-    const failed = items.length - success;
-    return { success, failed, total: items.length };
+  // Group history by node ID
+  const groupedByNode = React.useMemo(() => {
+    const groups: Record<number, BackupHistory[]> = {};
+    filteredHistory.forEach(h => {
+      if (!groups[h.node_id]) groups[h.node_id] = [];
+      groups[h.node_id].push(h);
+    });
+    return groups;
+  }, [filteredHistory]);
+
+  const renderArchiveTable = (archives: BackupHistory[]) => (
+    <div className="border-t border-zinc-800/60 bg-zinc-950/40">
+      <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
+        <thead className="bg-zinc-900/50 text-zinc-500 uppercase tracking-wider font-semibold">
+          <tr>
+            <th className="px-6 py-3">Archive Snapshot</th>
+            <th className="px-6 py-3">Date & Time</th>
+            <th className="px-6 py-3">Original Size</th>
+            <th className="px-6 py-3">Deduplicated Size</th>
+            <th className="px-6 py-3">Status</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-800/50">
+          {archives.map(h => (
+            <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
+              <td className="px-6 py-3 flex flex-col justify-center">
+                <span className="font-semibold text-white">{h.archive_name}</span>
+                {h.comment && <span className="text-[11px] text-zinc-500 mt-0.5 italic">Comment: {h.comment}</span>}
+              </td>
+              <td className="px-6 py-3.5 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
+              <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
+              <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
+              <td className="px-6 py-3.5">
+                {h.status === 'SUCCESS' ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderNodeHeader = (node: Node, subnodesCount: number, depth = 0) => {
+    const isExpanded = !!expandedNodes[`node-${node.id}`];
+    const success = (groupedByNode[node.id] || []).filter(h => h.status === 'SUCCESS').length;
+    const failed = (groupedByNode[node.id] || []).length - success;
+
+    return (
+      <div key={`node-${node.id}`} className="rounded-xl border border-zinc-800/80 bg-zinc-950 overflow-hidden mb-2" style={{ marginLeft: `${depth * 16}px` }}>
+        <button
+          onClick={() => toggleExpand(`node-${node.id}`)}
+          className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-zinc-900/60 transition-colors cursor-pointer group"
+        >
+          <div className="flex items-center gap-3">
+            <ChevronRight size={16} className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+            <Cpu size={14} className="text-zinc-500" />
+            <span className="text-sm font-semibold text-zinc-100 group-hover:text-white transition-colors">{node.hostname}</span>
+            <span className="text-xs text-zinc-500">— {subnodesCount} archive(s)</span>
+            {success > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{success} ok</span>}
+            {failed > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">{failed} failed</span>}
+          </div>
+          <div onClick={(e) => { e.stopPropagation(); setPurgeTarget(node); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors">
+            {purging[node.id] ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            {purging[node.id] ? 'Purging...' : 'Purge All'}
+          </div>
+        </button>
+        {isExpanded && renderArchiveTable(groupedByNode[node.id] || [])}
+      </div>
+    );
   };
 
-  const getLatestBackup = (nodeId: number) => {
-    const items = groupedHistory[nodeId] || [];
-    if (items.length === 0) return null;
-    return new Date(items[0].timestamp);
+  const renderGroupedContent = () => {
+    if (grouping === 'flat') {
+      return renderArchiveTable(filteredHistory);
+    }
+
+    if (grouping === 'prefix') {
+      const groups: Record<string, Node[]> = {};
+      nodes.forEach(node => {
+        if (!groupedByNode[node.id]?.length) return;
+        const match = node.hostname.match(/^([^0-9.-]+)/);
+        const prefix = match ? match[1] : 'Other';
+        if (!groups[prefix]) groups[prefix] = [];
+        groups[prefix].push(node);
+      });
+
+      return Object.keys(groups).sort().map(prefix => {
+        const isExpanded = !!expandedGroups[prefix];
+        const groupNodes = groups[prefix];
+        return (
+          <div key={prefix} className="mb-4">
+            <button
+              onClick={() => toggleExpand(prefix)}
+              className="w-full flex items-center gap-2 py-2 px-3 bg-zinc-900/60 hover:bg-zinc-800/40 rounded-lg text-sm font-semibold text-zinc-300 transition-colors mb-2 cursor-pointer"
+            >
+              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              {isExpanded ? <FolderOpen size={14} className="text-indigo-400" /> : <Folder size={14} className="text-indigo-400" />}
+              <span>{prefix} ({groupNodes.length} node{groupNodes.length > 1 ? 's' : ''})</span>
+            </button>
+            {isExpanded && groupNodes.map(node => renderNodeHeader(node, groupedByNode[node.id].length, 1))}
+          </div>
+        );
+      });
+    }
+
+    if (grouping === 'subnet') {
+      const rootTree: any = {};
+      nodes.forEach(node => {
+        if (!groupedByNode[node.id]?.length) return;
+        const parts = node.ip_address.split('.');
+        if (parts.length !== 4) return;
+        const o1 = parts[0] + '.x.x.x';
+        const o2 = parts[0] + '.' + parts[1] + '.x.x';
+        const o3 = parts[0] + '.' + parts[1] + '.' + parts[2] + '.x';
+
+        if (!rootTree[o1]) rootTree[o1] = {};
+        if (!rootTree[o1][o2]) rootTree[o1][o2] = {};
+        if (!rootTree[o1][o2][o3]) rootTree[o1][o2][o3] = [];
+        rootTree[o1][o2][o3].push(node);
+      });
+
+      return Object.keys(rootTree).sort().map(o1 => {
+        const isO1Expanded = !!expandedGroups[o1];
+        const o2Tree = rootTree[o1];
+        return (
+          <div key={o1} className="mb-2">
+            <button onClick={() => toggleExpand(o1)} className="w-full flex items-center gap-2 py-2 px-3 bg-zinc-900/80 hover:bg-zinc-850 rounded-lg text-sm font-semibold text-zinc-200 cursor-pointer">
+              {isO1Expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              <Folder size={14} className="text-zinc-400" />
+              <span>Subnet: {o1}</span>
+            </button>
+            {isO1Expanded && Object.keys(o2Tree).sort().map(o2 => {
+              const o2Key = `${o1}/${o2}`;
+              const isO2Expanded = !!expandedGroups[o2Key];
+              const o3Tree = o2Tree[o2];
+              return (
+                <div key={o2Key} className="ml-4 mt-2">
+                  <button onClick={() => toggleExpand(o2Key)} className="w-full flex items-center gap-2 py-1.5 px-3 bg-zinc-900/40 hover:bg-zinc-800/30 rounded-lg text-xs font-semibold text-zinc-300 cursor-pointer">
+                    {isO2Expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    <Folder size={12} className="text-zinc-500" />
+                    <span>Subnet: {o2}</span>
+                  </button>
+                  {isO2Expanded && Object.keys(o3Tree).sort().map(o3 => {
+                    const o3Key = `${o2Key}/${o3}`;
+                    const isO3Expanded = !!expandedGroups[o3Key];
+                    const subnetNodes = o3Tree[o3];
+                    return (
+                      <div key={o3Key} className="ml-4 mt-2">
+                        <button onClick={() => toggleExpand(o3Key)} className="w-full flex items-center gap-2 py-1.5 px-3 bg-zinc-900/20 hover:bg-zinc-800/20 rounded-lg text-[11px] font-semibold text-zinc-400 cursor-pointer">
+                          {isO3Expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                          <FolderOpen size={10} className="text-indigo-400/80" />
+                          <span>Subnet: {o3} ({subnetNodes.length})</span>
+                        </button>
+                        {isO3Expanded && subnetNodes.map((node: Node) => renderNodeHeader(node, groupedByNode[node.id].length, 1))}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      });
+    }
+
+    return null;
   };
+
+  const expandedGroups = expandedNodes; // alias
 
   return (
     <div className="space-y-6">
@@ -223,129 +403,62 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
         </div>
       </div>
 
-      {/* Collapsible history per node */}
-      <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-3">
-        <div className="flex justify-between items-center mb-2">
+      {/* Execution History */}
+      <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h3 className="text-lg font-bold text-white">Execution History</h3>
-            <p className="text-xs text-zinc-400">Click on a device to expand its backup archives.</p>
+            <p className="text-xs text-zinc-400">Search and navigate historical edge backup snapshots.</p>
           </div>
           <button
             onClick={fetchStats}
-            className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded transition-colors"
+            className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded transition-colors self-end"
           >
             <RefreshCw size={16} />
           </button>
         </div>
 
+        {/* Search & Grouping Controls */}
+        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-zinc-950 p-4 rounded-xl border border-zinc-850">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              placeholder="Search history by hostname, snapshot name, status, or comment..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2 border-l border-zinc-800 pl-0 md:pl-4">
+            <span className="text-xs text-zinc-400 font-medium whitespace-nowrap">Group By:</span>
+            <div className="inline-flex rounded-lg border border-zinc-800 p-0.5 bg-zinc-900">
+              {(['flat', 'prefix', 'subnet'] as const).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setGrouping(mode)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${grouping === mode ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  {mode === 'flat' ? 'Flat List' : mode === 'prefix' ? 'Hostname Prefix' : 'IP Subnet'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {loading ? (
           <div className="text-center py-8 text-zinc-500 text-sm">Loading history records...</div>
-        ) : history.length === 0 ? (
-          <div className="text-center py-8 text-zinc-500 text-sm">No backup records found.</div>
+        ) : filteredHistory.length === 0 ? (
+          <div className="text-center py-8 text-zinc-500 text-sm">No backup records match your filter.</div>
         ) : (
           <div className="space-y-2">
-            {nodesWithHistory.map(node => {
-              const isExpanded = !!expandedNodes[node.id];
-              const counts = getNodeStatusCounts(node.id);
-              const latestDate = getLatestBackup(node.id);
-
-              return (
-                <div
-                  key={node.id}
-                  className="rounded-xl border border-zinc-800/80 bg-zinc-950 overflow-hidden"
-                >
-                  {/* Clickable device header */}
-                  <button
-                    onClick={() => toggleNode(node.id)}
-                    className="w-full flex items-center justify-between px-5 py-4 hover:bg-zinc-900/60 transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <ChevronRight
-                        size={16}
-                        className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
-                      />
-                      <Database size={15} className="text-zinc-500" />
-                      <span className="text-sm font-semibold text-zinc-100 group-hover:text-white transition-colors">
-                        {node.hostname}
-                      </span>
-                      <span className="text-xs text-zinc-500 font-normal">
-                        — {counts.total} archive(s)
-                      </span>
-                      {counts.success > 0 && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          {counts.success} ok
-                        </span>
-                      )}
-                      {counts.failed > 0 && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                          {counts.failed} failed
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {latestDate && (
-                        <span className="text-[11px] text-zinc-500 hidden sm:inline">
-                          Last: {latestDate.toLocaleDateString()}
-                        </span>
-                      )}
-                      <div
-                        onClick={(e) => { e.stopPropagation(); setPurgeTarget(node); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors"
-                        role="button"
-                        tabIndex={0}
-                      >
-                        {purging[node.id] ? (
-                          <Loader2 size={13} className="animate-spin" />
-                        ) : (
-                          <Trash2 size={13} />
-                        )}
-                        {purging[node.id] ? 'Purging...' : 'Purge All'}
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Collapsible archive table */}
-                  <div
-                    className="overflow-hidden transition-all duration-300 ease-in-out"
-                    style={{
-                      maxHeight: isExpanded ? `${(groupedHistory[node.id].length + 1) * 52 + 20}px` : '0px',
-                      opacity: isExpanded ? 1 : 0,
-                    }}
-                  >
-                    <div className="border-t border-zinc-800/60">
-                      <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
-                        <thead className="bg-zinc-900/50 text-zinc-500 uppercase tracking-wider font-semibold">
-                          <tr>
-                            <th className="px-6 py-3">Archive Snapshot</th>
-                            <th className="px-6 py-3">Date & Time</th>
-                            <th className="px-6 py-3">Original Size</th>
-                            <th className="px-6 py-3">Deduplicated Size</th>
-                            <th className="px-6 py-3">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800/50">
-                          {groupedHistory[node.id].map(h => (
-                            <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
-                              <td className="px-6 py-3.5 font-semibold text-white">{h.archive_name}</td>
-                              <td className="px-6 py-3.5 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
-                              <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
-                              <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
-                              <td className="px-6 py-3.5">
-                                {h.status === 'SUCCESS' ? (
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
-                                ) : (
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {grouping === 'flat' ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+                {renderGroupedContent()}
+              </div>
+            ) : (
+              renderGroupedContent()
+            )}
           </div>
         )}
       </div>

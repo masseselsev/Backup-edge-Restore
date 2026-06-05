@@ -72,7 +72,7 @@ def test_parse_ip_input():
     """
     Test parsing lists, ranges, and CIDR blocks into single IP strings.
     """
-    from main import parse_ip_input
+    from routers.nodes import parse_ip_input
 
     # Test single
     assert parse_ip_input("192.168.1.100") == ["192.168.1.100"]
