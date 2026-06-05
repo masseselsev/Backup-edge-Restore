@@ -17,7 +17,10 @@ BASE_ISO_PATH_TMP = BASE_ISO_PATH + ".tmp"
 def download_base_iso_task(self) -> Dict[str, Any]:
     os.makedirs(CACHE_DIR, exist_ok=True)
     if os.path.exists(BASE_ISO_PATH):
-        return {"status": "SUCCESS", "message": "Base ISO already cached."}
+        if os.path.getsize(BASE_ISO_PATH) > 1000 * 1024 * 1024:
+            return {"status": "SUCCESS", "message": "Base ISO already cached."}
+        else:
+            os.remove(BASE_ISO_PATH)
     
     try:
         logger.info(f"Downloading Base ISO from {BASE_ISO_URL}...")
@@ -43,6 +46,12 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
     db.add(task_log)
     db.commit()
     db.close()
+
+    # Validate cached ISO size
+    if os.path.exists(BASE_ISO_PATH):
+        if os.path.getsize(BASE_ISO_PATH) < 1000 * 1024 * 1024:
+            logger.warning("Cached Base ISO is too small (corrupted). Deleting it.")
+            os.remove(BASE_ISO_PATH)
 
     if not os.path.exists(BASE_ISO_PATH):
         log_to_task(task_id, "[PROGRESS] 5:Downloading Base ISO...")

@@ -44,7 +44,8 @@ def download_iso():
 
 @router.get("/status")
 def get_iso_status():
-    base_exists = os.path.exists(os.path.join(CACHE_DIR, "base.iso"))
+    base_iso_path = os.path.join(CACHE_DIR, "base.iso")
+    base_exists = os.path.exists(base_iso_path) and os.path.getsize(base_iso_path) > 1000 * 1024 * 1024
     tmp_path = os.path.join(CACHE_DIR, "base.iso.tmp")
     client_exists = os.path.exists(os.path.join(CACHE_DIR, "technician_client_v1.iso"))
     
