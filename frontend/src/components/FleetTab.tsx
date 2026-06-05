@@ -14,6 +14,7 @@ interface Node {
   network_iface: string | null;
   efi_uuid: string | null;
   os_version: string | null;
+  next_retry_at: string | null;
 }
 
 interface FleetTabProps {

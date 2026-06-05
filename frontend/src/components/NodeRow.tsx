@@ -12,6 +12,7 @@ export interface Node {
   network_iface: string | null;
   efi_uuid: string | null;
   os_version: string | null;
+  next_retry_at: string | null;
 }
 
 interface NodeRowProps {
@@ -37,6 +38,38 @@ export function NodeRow({
   onShowBackup,
   onDeleteNode,
 }: NodeRowProps) {
+  const [timeLeft, setTimeLeft] = React.useState<number>(0);
+
+  React.useEffect(() => {
+    if (node.status !== 'OFFLINE' || !node.next_retry_at) {
+      setTimeLeft(0);
+      return;
+    }
+
+    const calculateTimeLeft = () => {
+      const diff = new Date(node.next_retry_at!).getTime() - Date.now();
+      return Math.max(0, Math.ceil(diff / 1000));
+    };
+
+    setTimeLeft(calculateTimeLeft());
+
+    const timer = setInterval(() => {
+      const remaining = calculateTimeLeft();
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(timer);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [node.status, node.next_retry_at]);
+
+  const formatTime = (seconds: number) => {
+    if (seconds <= 0) return '';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
   
   const renderStatusButton = () => {
     const statusMap: Record<string, { bg: string, text: string, border: string, label: string, icon: React.ReactNode, title: string, onClick: () => void }> = {
@@ -57,7 +90,9 @@ export function NodeRow({
       },
       OFFLINE: {
         bg: "bg-rose-500/10 hover:bg-rose-500/20", text: "text-rose-400", border: "border-rose-500/20",
-        label: "Provision", icon: <ShieldAlert size={14} />, title: "Provision Offline Node",
+        label: timeLeft > 0 ? `Provision (${formatTime(timeLeft)})` : "Provision",
+        icon: <ShieldAlert size={14} />,
+        title: timeLeft > 0 ? `Auto-retry in ${formatTime(timeLeft)}` : "Provision Offline Node",
         onClick: () => onShowProvision(node)
       }
     };

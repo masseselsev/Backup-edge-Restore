@@ -3,6 +3,7 @@ import subprocess
 import ipaddress
 import redis
 import json
+import datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -67,7 +68,32 @@ def get_nodes(db: Session = Depends(get_db)):
     """
     Retrieves lists of all nodes.
     """
-    return db.query(models.Node).all()
+    nodes = db.query(models.Node).all()
+    results = []
+    for node in nodes:
+        node_dict = {
+            "id": node.id,
+            "hostname": node.hostname,
+            "ip_address": node.ip_address,
+            "ssh_port": node.ssh_port,
+            "status": node.status,
+            "last_backup": node.last_backup,
+            "disk_type": node.disk_type,
+            "network_iface": node.network_iface,
+            "efi_uuid": node.efi_uuid,
+            "partition_layout": node.partition_layout,
+            "os_version": node.os_version,
+            "next_retry_at": None
+        }
+        if node.status == "OFFLINE":
+            try:
+                next_retry = redis_client.get(f"node_next_retry:{node.id}")
+                if next_retry:
+                    node_dict["next_retry_at"] = datetime.datetime.utcfromtimestamp(int(next_retry))
+            except Exception:
+                pass
+        results.append(node_dict)
+    return results
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -257,6 +283,12 @@ def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, db: S
 
     node.status = "NEEDS_BOOTSTRAP"
     db.commit()
+
+    # Clear next retry redis key
+    try:
+        redis_client.delete(f"node_next_retry:{node.id}")
+    except Exception:
+        pass
 
     # Store credentials in Redis
     creds = {

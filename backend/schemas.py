@@ -37,6 +37,7 @@ class NodeResponse(BaseModel):
     efi_uuid: Optional[str] = None
     partition_layout: Optional[List[dict]] = None
     os_version: Optional[str] = None
+    next_retry_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

@@ -217,7 +217,6 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         except Exception as e:
             log_to_task(task_id, f"WARNING: Failed to append key to authorized_keys: {str(e)}", status="FAILED")
     else:
-        # Check if unreachable / connection timed out
         is_offline = False
         task_log_obj = db.query(TaskLog).filter(TaskLog.id == task_id).first()
         if task_log_obj and task_log_obj.log_output:
@@ -225,7 +224,15 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
             if "UNREACHABLE" in log_out_upper or "COULD NOT RESOLVE" in log_out_upper or "CONNECTION TIMEOUT" in log_out_upper or "CONNECT TO HOST" in log_out_upper:
                 is_offline = True
         
-        node.status = "OFFLINE" if is_offline else "NEEDS_BOOTSTRAP"
+        if is_offline:
+            node.status = "OFFLINE"
+            try:
+                import time
+                redis_client.set(f"node_next_retry:{node.id}", int(time.time() + 300), ex=300)
+            except Exception as e:
+                logger.error(f"Error setting node_next_retry: {str(e)}")
+        else:
+            node.status = "NEEDS_BOOTSTRAP"
         db.commit()
         error_msg = "Bootstrap task failed."
         if task_log_obj and task_log_obj.log_output and "OS_UNSUPPORTED" in task_log_obj.log_output:
@@ -255,6 +262,10 @@ def auto_retry_bootstrap_task() -> Dict[str, Any]:
                 creds = json.loads(creds_json)
                 node.status = "NEEDS_BOOTSTRAP"
                 db.commit()
+                try:
+                    redis_client.delete(f"node_next_retry:{node.id}")
+                except Exception:
+                    pass
                 run_bootstrap_task.delay(node.id, creds["bootstrap_password"], creds["bootstrap_user"])
                 triggered.append(node.id)
         return {"status": "SUCCESS", "triggered_node_ids": triggered}
