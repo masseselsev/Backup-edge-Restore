@@ -112,11 +112,17 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
     try {
       const res = await fetch(`/api/nodes/${nodeId}/prepare`, { method: 'POST' });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to trigger prepare disk task.');
+      }
       if (data.task_id) {
         onViewLogs(data.task_id, `Preparing Node ${name}`);
+      } else {
+        throw new Error('Server did not return a task ID.');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Error: ${e.message}`);
     }
   };
 
@@ -131,11 +137,17 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         body: JSON.stringify({ comment })
       });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to trigger backup task.');
+      }
       if (data.task_id) {
         onViewLogs(data.task_id, `Backing up Node ${node.hostname}`);
+      } else {
+        throw new Error('Server did not return a task ID.');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(`Error: ${e.message}`);
     }
   };
 
