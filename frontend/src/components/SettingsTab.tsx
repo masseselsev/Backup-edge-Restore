@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Settings as Gear, CheckCircle } from 'lucide-react';
+import { SearchableSelect } from './SearchableSelect';
+import type { Option } from './SearchableSelect';
 
 interface SettingsTabProps {
   onSettingsUpdated?: (settings: any) => void;
@@ -13,11 +15,31 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   const [keepMonthly, setKeepMonthly] = useState(6);
   const [globalExclusions, setGlobalExclusions] = useState('/dev/*,/proc/*,/sys/*,/run/*,/mnt/*');
   const [orchestratorIp, setOrchestratorIp] = useState('');
-  const [timezone, setTimezone] = useState('Browser Local');
+  
+  const [useLocalTime, setUseLocalTime] = useState(true);
+  const [timezone, setTimezone] = useState('Europe/Moscow');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  // Generate options
+  const timezoneOptions: Option[] = React.useMemo(() => {
+    let zones: string[] = [];
+    try {
+      zones = (Intl as any).supportedValuesOf('timeZone') || [];
+    } catch (e) {
+      zones = [
+        'UTC', 'Europe/Moscow', 'Europe/London', 'Europe/Paris', 
+        'America/New_York', 'America/Los_Angeles', 'Asia/Tokyo', 
+        'Asia/Shanghai', 'Asia/Kolkata', 'Asia/Yekaterinburg'
+      ];
+    }
+    return zones.map(tz => ({
+      value: tz,
+      label: tz
+    }));
+  }, []);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -30,7 +52,15 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         setKeepMonthly(data.keep_monthly);
         setGlobalExclusions(data.global_exclusions);
         setOrchestratorIp(data.orchestrator_ip || '');
-        setTimezone(data.timezone || 'Browser Local');
+        
+        const dbTz = data.timezone || 'Browser Local';
+        if (dbTz === 'Browser Local') {
+          setUseLocalTime(true);
+          setTimezone('Europe/Moscow'); // default fallback in state
+        } else {
+          setUseLocalTime(false);
+          setTimezone(dbTz);
+        }
         setLoading(false);
       })
       .catch(e => {
@@ -44,6 +74,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
     setSaving(true);
     setSuccess(false);
     try {
+      const savedTz = useLocalTime ? 'Browser Local' : timezone;
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,7 +86,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
           keep_monthly: keepMonthly,
           global_exclusions: globalExclusions,
           orchestrator_ip: orchestratorIp,
-          timezone: timezone
+          timezone: savedTz
         })
       });
       if (res.ok) {
@@ -157,25 +188,36 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">System Timezone</label>
-            <select
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none cursor-pointer"
-            >
-              <option value="Browser Local">Browser Local</option>
-              <option value="UTC">UTC</option>
-              <option value="Europe/Moscow">Europe/Moscow (MSK)</option>
-              <option value="Europe/London">Europe/London (GMT/BST)</option>
-              <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
-              <option value="America/New_York">America/New_York (EST/EDT)</option>
-              <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
-              <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
-              <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
-              <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-              <option value="Asia/Yekaterinburg">Asia/Yekaterinburg (YEKT)</option>
-            </select>
+          <div className="flex flex-col justify-end">
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="checkbox"
+                id="useLocalTime"
+                checked={useLocalTime}
+                onChange={(e) => setUseLocalTime(e.target.checked)}
+                className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+              />
+              <label htmlFor="useLocalTime" className="text-xs font-semibold text-zinc-400 cursor-pointer select-none">
+                Use Local Browser Timezone
+              </label>
+            </div>
+            
+            {!useLocalTime && (
+              <div>
+                <label className="block text-[10px] font-semibold text-zinc-500 mb-1 uppercase tracking-wider">Select System Timezone</label>
+                <SearchableSelect
+                  options={timezoneOptions}
+                  value={timezone}
+                  onChange={setTimezone}
+                  placeholder="Select Timezone..."
+                />
+              </div>
+            )}
+            {useLocalTime && (
+              <div className="text-xs text-zinc-500 italic px-3 py-2 bg-zinc-950/40 rounded-lg border border-zinc-850">
+                System dates will display using your local browser timezone.
+              </div>
+            )}
           </div>
         </div>
 
