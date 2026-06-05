@@ -3,10 +3,11 @@ import { Server, HardDrive, History, Settings as Gear, Terminal } from 'lucide-r
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
+import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
 import TaskLogsModal from './components/TaskLogsModal';
 
-type Tab = 'fleet' | 'flasher' | 'history' | 'settings';
+type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('fleet');
@@ -83,6 +84,8 @@ export default function App() {
         return <FlasherTab onViewLogs={handleViewLogs} />;
       case 'history':
         return <HistoryTab onViewLogs={handleViewLogs} />;
+      case 'logs':
+        return <LogsTab onViewLogs={handleViewLogs} />;
       case 'settings':
         return <SettingsTab />;
       case 'fleet':
@@ -140,6 +143,16 @@ export default function App() {
               }`}
             >
               <History size={14} /> History
+            </button>
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'logs'
+                  ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                  : 'text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              <Terminal size={14} /> Logs
             </button>
             <button
               onClick={() => setActiveTab('settings')}

@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
@@ -5,6 +6,13 @@ import models
 import schemas
 
 router = APIRouter(prefix="/api/tasks")
+
+@router.get("", response_model=List[schemas.TaskLogResponse])
+def get_all_tasks(db: Session = Depends(get_db)):
+    """
+    Lists all background task execution logs ordered by created_at desc.
+    """
+    return db.query(models.TaskLog).order_by(models.TaskLog.created_at.desc()).all()
 
 @router.get("/{task_id}", response_model=schemas.TaskLogResponse)
 def get_task_logs(task_id: str, db: Session = Depends(get_db)):
