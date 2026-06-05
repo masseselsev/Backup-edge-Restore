@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import json
 import logging
+import hashlib
 from tasks import celery_app
 from typing import Dict, Any
 
@@ -26,9 +27,37 @@ def download_base_iso_task(self) -> Dict[str, Any]:
         logger.info(f"Downloading Base ISO from {BASE_ISO_URL}...")
         # Use curl to download the file safely to a temporary path with fail-fast (-f)
         subprocess.check_call(["curl", "-f", "-L", "-o", BASE_ISO_PATH_TMP, BASE_ISO_URL])
+
+        logger.info("Downloading SHA512SUMS for validation...")
+        sums_url = BASE_ISO_URL.rsplit('/', 1)[0] + "/SHA512SUMS"
+        sums_path = os.path.join(CACHE_DIR, "SHA512SUMS")
+        subprocess.check_call(["curl", "-f", "-sL", "-o", sums_path, sums_url])
+        
+        iso_filename = os.path.basename(BASE_ISO_URL)
+        expected_hash = None
+        with open(sums_path, 'r') as f:
+            for line in f:
+                if iso_filename in line:
+                    expected_hash = line.split()[0]
+                    break
+                    
+        if not expected_hash:
+            raise Exception("Could not find expected hash in SHA512SUMS")
+            
+        logger.info(f"Validating ISO checksum (expected: {expected_hash[:8]}...)..")
+        hasher = hashlib.sha512()
+        with open(BASE_ISO_PATH_TMP, 'rb') as f:
+            for chunk in iter(lambda: f.read(4096 * 1024), b""):
+                hasher.update(chunk)
+                
+        actual_hash = hasher.hexdigest()
+        if actual_hash != expected_hash:
+            raise Exception(f"Checksum mismatch! Expected {expected_hash}, got {actual_hash}")
+            
         os.rename(BASE_ISO_PATH_TMP, BASE_ISO_PATH)
-        return {"status": "SUCCESS", "message": "Base ISO downloaded successfully."}
+        return {"status": "SUCCESS", "message": "Base ISO downloaded and verified successfully."}
     except Exception as e:
+        logger.error(f"Download or validation failed: {e}")
         if os.path.exists(BASE_ISO_PATH_TMP):
             os.remove(BASE_ISO_PATH_TMP)
         return {"status": "FAILED", "error": str(e)}

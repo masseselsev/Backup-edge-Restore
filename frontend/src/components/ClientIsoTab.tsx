@@ -153,7 +153,9 @@ export default function ClientIsoTab() {
                   {status?.base_iso_progress !== undefined && status.base_iso_progress > 0 && !status.base_iso_cached && (
                     <div className="mt-2 w-full max-w-[200px]">
                       <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
-                        <span className="text-zinc-400">Downloading...</span>
+                        <span className="text-zinc-400">
+                          {status.base_iso_progress === 100 ? 'Validating checksum...' : 'Downloading...'}
+                        </span>
                         <span className="text-sky-400">{status.base_iso_progress}%</span>
                       </div>
                       <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
