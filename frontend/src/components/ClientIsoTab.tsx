@@ -150,7 +150,7 @@ export default function ClientIsoTab() {
                   <div className="text-[10px] text-zinc-500">debian-live-testing-amd64-xfce.iso</div>
                   
                   {/* Progress Bar for Base ISO Download */}
-                  {status?.base_iso_progress !== undefined && status.base_iso_progress > 0 && !status.base_iso_cached && (
+                  {status?.base_iso_progress !== undefined && status.base_iso_progress >= 0 && !status.base_iso_cached && (
                     <div className="mt-2 w-full max-w-[200px]">
                       <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
                         <span className="text-zinc-400">

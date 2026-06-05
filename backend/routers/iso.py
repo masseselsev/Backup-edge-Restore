@@ -49,7 +49,7 @@ def get_iso_status():
     tmp_path = os.path.join(CACHE_DIR, "base.iso.tmp")
     client_exists = os.path.exists(os.path.join(CACHE_DIR, "technician_client_v1.iso"))
     
-    progress = 0
+    progress = -1
     if not base_exists and os.path.exists(tmp_path):
         size = os.path.getsize(tmp_path)
         progress = min(100, int((size / 4139925504) * 100))
