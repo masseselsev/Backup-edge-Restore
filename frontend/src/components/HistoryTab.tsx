@@ -39,7 +39,7 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
   
   // Search & Grouping state
   const [searchQuery, setSearchQuery] = useState('');
-  const [grouping, setGrouping] = useState<'flat' | 'prefix' | 'subnet'>('flat');
+  const [grouping, setGrouping] = useState<'flat' | 'hostname' | 'prefix' | 'subnet'>('hostname');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
   const fetchStats = useCallback(async () => {
@@ -160,11 +160,13 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
     return groups;
   }, [filteredHistory]);
 
-  const renderArchiveTable = (archives: BackupHistory[]) => (
+  const renderArchiveTable = (archives: BackupHistory[], showNodeInfo = false) => (
     <div className="border-t border-zinc-800/60 bg-zinc-950/40">
       <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
         <thead className="bg-zinc-900/50 text-zinc-500 uppercase tracking-wider font-semibold">
           <tr>
+            {showNodeInfo && <th className="px-6 py-3">Hostname</th>}
+            {showNodeInfo && <th className="px-6 py-3">IP Address</th>}
             <th className="px-6 py-3">Archive Snapshot</th>
             <th className="px-6 py-3">Date & Time</th>
             <th className="px-6 py-3">Original Size</th>
@@ -173,24 +175,37 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-800/50">
-          {archives.map(h => (
-            <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
-              <td className="px-6 py-3 flex flex-col justify-center">
-                <span className="font-semibold text-white">{h.archive_name}</span>
-                {h.comment && <span className="text-[11px] text-zinc-500 mt-0.5 italic">Comment: {h.comment}</span>}
-              </td>
-              <td className="px-6 py-3.5 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
-              <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
-              <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
-              <td className="px-6 py-3.5">
-                {h.status === 'SUCCESS' ? (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
-                ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
+          {archives.map(h => {
+            const node = nodesMap[h.node_id];
+            return (
+              <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
+                {showNodeInfo && (
+                  <td className="px-6 py-3.5 font-semibold text-zinc-300">
+                    {node ? node.hostname : 'Unknown'}
+                  </td>
                 )}
-              </td>
-            </tr>
-          ))}
+                {showNodeInfo && (
+                  <td className="px-6 py-3.5 text-zinc-400">
+                    {node ? node.ip_address : 'Unknown'}
+                  </td>
+                )}
+                <td className="px-6 py-3 flex flex-col justify-center">
+                  <span className="font-semibold text-white">{h.archive_name}</span>
+                  {h.comment && <span className="text-[11px] text-zinc-500 mt-0.5 italic">Comment: {h.comment}</span>}
+                </td>
+                <td className="px-6 py-3.5 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
+                <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
+                <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
+                <td className="px-6 py-3.5">
+                  {h.status === 'SUCCESS' ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -211,6 +226,7 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
             <ChevronRight size={16} className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
             <Cpu size={14} className="text-zinc-500" />
             <span className="text-sm font-semibold text-zinc-100 group-hover:text-white transition-colors">{node.hostname}</span>
+            <span className="text-xs text-zinc-400">({node.ip_address})</span>
             <span className="text-xs text-zinc-500">— {subnodesCount} archive(s)</span>
             {success > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{success} ok</span>}
             {failed > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">{failed} failed</span>}
@@ -227,7 +243,14 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
 
   const renderGroupedContent = () => {
     if (grouping === 'flat') {
-      return renderArchiveTable(filteredHistory);
+      return renderArchiveTable(filteredHistory, true);
+    }
+
+    if (grouping === 'hostname') {
+      return nodes
+        .filter(node => (groupedByNode[node.id]?.length || 0) > 0)
+        .sort((a, b) => a.hostname.localeCompare(b.hostname))
+        .map(node => renderNodeHeader(node, groupedByNode[node.id].length));
     }
 
     if (grouping === 'prefix') {
@@ -419,7 +442,7 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
         </div>
 
         {/* Search & Grouping Controls */}
-        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-zinc-950 p-4 rounded-xl border border-zinc-850">
+        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-zinc-900/40 p-4 rounded-xl border border-zinc-800">
           <div className="relative flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input
@@ -427,19 +450,19 @@ export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
               placeholder="Search history by hostname, snapshot name, status, or comment..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+              className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
             />
           </div>
           <div className="flex items-center gap-2 border-l border-zinc-800 pl-0 md:pl-4">
             <span className="text-xs text-zinc-400 font-medium whitespace-nowrap">Group By:</span>
-            <div className="inline-flex rounded-lg border border-zinc-800 p-0.5 bg-zinc-900">
-              {(['flat', 'prefix', 'subnet'] as const).map(mode => (
+            <div className="inline-flex rounded-lg border border-zinc-800 p-0.5 bg-zinc-950">
+              {(['flat', 'hostname', 'prefix', 'subnet'] as const).map(mode => (
                 <button
                   key={mode}
                   onClick={() => setGrouping(mode)}
                   className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${grouping === mode ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
                 >
-                  {mode === 'flat' ? 'Flat List' : mode === 'prefix' ? 'Hostname Prefix' : 'IP Subnet'}
+                  {mode === 'flat' ? 'Flat List' : mode === 'hostname' ? 'Hostname' : mode === 'prefix' ? 'Hostname Prefix' : 'IP Subnet'}
                 </button>
               ))}
             </div>
