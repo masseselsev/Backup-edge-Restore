@@ -155,17 +155,50 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
+  const renderStatusButton = (node: Node) => {
+    const baseClass = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer";
+    switch (node.status) {
       case 'READY':
-        return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><CheckCircle size={14} /> Ready [Labels OK]</span>;
+        return (
+          <button
+            onClick={() => runPrepare(node.id, node.hostname)}
+            className={`${baseClass} bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20`}
+            title="Re-run Prepare Disk"
+          >
+            <CheckCircle size={14} /> Ready [OK]
+          </button>
+        );
       case 'NEEDS_FIX':
-        return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20"><AlertTriangle size={14} /> Needs Fix [No labels]</span>;
+        return (
+          <button
+            onClick={() => runPrepare(node.id, node.hostname)}
+            className={`${baseClass} bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20`}
+            title="Run Prepare Disk"
+          >
+            <AlertTriangle size={14} /> Needs Fix [Prepare]
+          </button>
+        );
       case 'NEEDS_BOOTSTRAP':
-        return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"><Gear size={14} /> Needs Provisioning</span>;
+        return (
+          <button
+            onClick={() => setShowProvisionModal(node)}
+            className={`${baseClass} bg-zinc-500/10 hover:bg-zinc-500/20 text-zinc-400 border-zinc-500/20`}
+            title="Provision Node"
+          >
+            <Gear size={14} /> Provision
+          </button>
+        );
       case 'OFFLINE':
       default:
-        return <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20"><ShieldAlert size={14} /> Offline</span>;
+        return (
+          <button
+            onClick={() => setShowProvisionModal(node)}
+            className={`${baseClass} bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20`}
+            title="Provision Offline Node"
+          >
+            <ShieldAlert size={14} /> Provision
+          </button>
+        );
     }
   };
 
@@ -185,44 +218,29 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
 
   const renderNodeRow = (node: Node, depth = 0) => (
     <tr key={node.id} className="hover:bg-zinc-800/30 transition-colors">
-      <td className="px-6 py-4 font-semibold text-white flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 24}px` }}>
+      <td className="px-4 py-2.5 font-semibold text-white flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 24}px` }}>
         <Cpu size={14} className="text-zinc-500" />
         {node.hostname}
       </td>
-      <td className="px-6 py-4 text-zinc-400">{node.ip_address}:{node.ssh_port}</td>
-      <td className="px-6 py-4 text-zinc-300 font-medium text-xs">{node.os_version || 'Unknown'}</td>
-      <td className="px-6 py-4">
+      <td className="px-4 py-2.5 text-zinc-400">{node.ip_address}:{node.ssh_port}</td>
+      <td className="px-4 py-2.5 text-zinc-300 font-medium text-xs">{node.os_version || 'Unknown'}</td>
+      <td className="px-4 py-2.5">
         <div className="flex flex-col">
           <span className="text-zinc-300 font-medium text-xs">Disk: {node.disk_type}</span>
           <span className="text-zinc-500 text-xs">Net: {node.network_iface || 'UNKNOWN'}</span>
         </div>
       </td>
-      <td className="px-6 py-4">{getStatusBadge(node.status)}</td>
-      <td className="px-6 py-4 text-zinc-400">
+      <td className="px-4 py-2.5">{renderStatusButton(node)}</td>
+      <td className="px-4 py-2.5 text-zinc-400">
         {node.last_backup ? new Date(node.last_backup).toLocaleString() : 'Never'}
       </td>
-      <td className="px-6 py-4 text-right flex items-center justify-end gap-2 text-zinc-300">
-        {(node.status === 'OFFLINE' || node.status === 'NEEDS_BOOTSTRAP') && (
-          <button
-            onClick={() => setShowProvisionModal(node)}
-            className="px-3 py-1.5 text-xs font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded border border-blue-500/20 transition-colors"
-          >
-            Provision
-          </button>
-        )}
-        <button
-          onClick={() => runPrepare(node.id, node.hostname)}
-          disabled={node.status === 'NEEDS_BOOTSTRAP' || node.status === 'OFFLINE'}
-          className="px-3 py-1.5 text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded border border-amber-500/20 disabled:opacity-30 transition-colors"
-        >
-          Prepare Disk
-        </button>
+      <td className="px-4 py-2.5 text-right flex items-center justify-end gap-2 text-zinc-300">
         <button
           onClick={() => setShowBackupModal(node)}
           disabled={node.status !== 'READY'}
-          className="px-3 py-1.5 text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/20 disabled:opacity-30 transition-colors"
+          className="px-2.5 py-1.5 text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/20 disabled:opacity-30 transition-colors"
         >
-          Backup Now
+          Backup
         </button>
         <button
           onClick={() => handleDeleteNode(node.id, node.hostname)}
@@ -397,13 +415,13 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         <table className="min-w-full divide-y divide-zinc-800 text-left text-sm text-zinc-300">
           <thead className="bg-zinc-900 text-xs uppercase tracking-wider text-zinc-400">
             <tr>
-              <th className="px-6 py-4">Hostname</th>
-              <th className="px-6 py-4">IP Address</th>
-              <th className="px-6 py-4">OS Version</th>
-              <th className="px-6 py-4">Disk & Interface</th>
-              <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4">Last Backup</th>
-              <th className="px-6 py-4 text-right">Actions</th>
+              <th className="px-4 py-2.5">Hostname</th>
+              <th className="px-4 py-2.5">IP Address</th>
+              <th className="px-4 py-2.5">OS Version</th>
+              <th className="px-4 py-2.5">Disk & Interface</th>
+              <th className="px-4 py-2.5">Status / Action</th>
+              <th className="px-4 py-2.5">Last Backup</th>
+              <th className="px-4 py-2.5 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
