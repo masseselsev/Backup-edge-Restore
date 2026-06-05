@@ -45,9 +45,16 @@ def download_iso():
 @router.get("/status")
 def get_iso_status():
     base_exists = os.path.exists(os.path.join(CACHE_DIR, "base.iso"))
+    tmp_path = os.path.join(CACHE_DIR, "base.iso.tmp")
     client_exists = os.path.exists(os.path.join(CACHE_DIR, "technician_client_v1.iso"))
     
+    progress = 0
+    if not base_exists and os.path.exists(tmp_path):
+        size = os.path.getsize(tmp_path)
+        progress = min(100, int((size / 4139925504) * 100))
+        
     return {
         "base_iso_cached": base_exists,
+        "base_iso_progress": progress,
         "client_iso_ready": client_exists
     }

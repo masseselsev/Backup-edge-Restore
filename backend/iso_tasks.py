@@ -8,9 +8,10 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-BASE_ISO_URL = "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/debian-live-13.0.0-amd64-xfce.iso"
+BASE_ISO_URL = "https://cdimage.debian.org/cdimage/weekly-live-builds/amd64/iso-hybrid/debian-live-testing-amd64-xfce.iso"
 CACHE_DIR = "/opt/data/iso_cache"
 BASE_ISO_PATH = os.path.join(CACHE_DIR, "base.iso")
+BASE_ISO_PATH_TMP = BASE_ISO_PATH + ".tmp"
 
 @celery_app.task(bind=True)
 def download_base_iso_task(self) -> Dict[str, Any]:
@@ -20,12 +21,13 @@ def download_base_iso_task(self) -> Dict[str, Any]:
     
     try:
         logger.info(f"Downloading Base ISO from {BASE_ISO_URL}...")
-        # Use curl to download the file directly
-        subprocess.check_call(["curl", "-L", "-o", BASE_ISO_PATH, BASE_ISO_URL])
+        # Use curl to download the file safely to a temporary path with fail-fast (-f)
+        subprocess.check_call(["curl", "-f", "-L", "-o", BASE_ISO_PATH_TMP, BASE_ISO_URL])
+        os.rename(BASE_ISO_PATH_TMP, BASE_ISO_PATH)
         return {"status": "SUCCESS", "message": "Base ISO downloaded successfully."}
     except Exception as e:
-        if os.path.exists(BASE_ISO_PATH):
-            os.remove(BASE_ISO_PATH)
+        if os.path.exists(BASE_ISO_PATH_TMP):
+            os.remove(BASE_ISO_PATH_TMP)
         return {"status": "FAILED", "error": str(e)}
 
 @celery_app.task(bind=True)

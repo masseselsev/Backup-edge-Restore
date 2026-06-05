@@ -4,6 +4,7 @@ import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react
 interface IsoStatus {
   base_iso_cached: boolean;
   client_iso_ready: boolean;
+  base_iso_progress?: number;
 }
 
 export default function ClientIsoTab() {
@@ -138,7 +139,23 @@ export default function ClientIsoTab() {
               <div className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
                 <div>
                   <div className="text-xs font-bold text-white">Base Debian ISO Cache</div>
-                  <div className="text-[10px] text-zinc-500">debian-live-13.0.0-amd64-xfce.iso</div>
+                  <div className="text-[10px] text-zinc-500">debian-live-testing-amd64-xfce.iso</div>
+                  
+                  {/* Progress Bar for Base ISO Download */}
+                  {status?.base_iso_progress !== undefined && status.base_iso_progress > 0 && !status.base_iso_cached && (
+                    <div className="mt-2 w-full max-w-[200px]">
+                      <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
+                        <span className="text-zinc-400">Downloading...</span>
+                        <span className="text-sky-400">{status.base_iso_progress}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${status.base_iso_progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {status?.base_iso_cached ? (
                   <CheckCircle className="text-emerald-400" size={20} />
