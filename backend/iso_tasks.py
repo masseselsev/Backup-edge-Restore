@@ -33,7 +33,16 @@ def download_base_iso_task(self) -> Dict[str, Any]:
 @celery_app.task(bind=True)
 def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str, Any]:
     from tasks import log_to_task
+    from database import SessionLocal
+    from models import TaskLog
+    
     task_id = self.request.id
+
+    db = SessionLocal()
+    task_log = TaskLog(id=task_id, task_type="ISO_GEN", status="RUNNING", log_output="")
+    db.add(task_log)
+    db.commit()
+    db.close()
 
     if not os.path.exists(BASE_ISO_PATH):
         log_to_task(task_id, "[PROGRESS] 5:Downloading Base ISO...")
