@@ -15,6 +15,7 @@ interface EdgeNode {
   hostname: string;
   disk_type: string;
   efi_uuid: string | null;
+  last_backup: string | null;
 }
 
 interface Snapshot {
@@ -273,12 +274,14 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
   const selectedNode = nodes.find(n => n.id === Number(selectedNodeId));
 
   // Options converters
-  const nodeOptions = nodes.map(n => ({
-    value: n.id,
-    label: n.hostname,
-    sublabel: `Original Disk: ${n.disk_type}${n.efi_uuid ? '' : ' [NO EFI UUID]'}`,
-    disabled: false
-  }));
+  const nodeOptions = nodes
+    .filter(n => n.last_backup !== null)
+    .map(n => ({
+      value: n.id,
+      label: n.hostname,
+      sublabel: `Original Disk: ${n.disk_type}${n.efi_uuid ? '' : ' [NO EFI UUID]'}`,
+      disabled: false
+    }));
 
   const snapshotOptions = snapshots.map(s => ({
     value: s.archive_name,
