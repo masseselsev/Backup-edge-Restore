@@ -24,6 +24,13 @@ import logging
 
 class DBLoggingHandler(logging.Handler):
     def emit(self, record):
+        if getattr(record, "_logged_to_db", False):
+            return
+        try:
+            record._logged_to_db = True
+        except Exception:
+            pass
+            
         name = record.name.lower()
         # Prevent infinite logging loop on SQL queries
         if (
@@ -50,12 +57,33 @@ class DBLoggingHandler(logging.Handler):
 
 def setup_db_logging():
     root = logging.getLogger()
-    # Avoid duplicate handlers
+    
+    # We want a single handler instance to be shared
+    handler = None
     for h in root.handlers:
         if isinstance(h, DBLoggingHandler):
-            return
-    handler = DBLoggingHandler()
-    handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-    handler.setFormatter(formatter)
-    root.addHandler(handler)
+            handler = h
+            break
+            
+    if handler is None:
+        handler = DBLoggingHandler()
+        handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+        handler.setFormatter(formatter)
+        root.addHandler(handler)
+
+    # Attach handler to specific loggers to ensure their logs are captured
+    loggers_to_attach = [
+        "uvicorn",
+        "uvicorn.error",
+        "uvicorn.access",
+        "fastapi",
+        "celery",
+        "celery.task",
+        "celery.worker"
+    ]
+    for name in loggers_to_attach:
+        l = logging.getLogger(name)
+        if not any(isinstance(h, DBLoggingHandler) for h in l.handlers):
+            l.addHandler(handler)
+

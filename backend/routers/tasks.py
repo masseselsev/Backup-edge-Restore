@@ -19,7 +19,7 @@ def get_debug_logs(db: Session = Depends(get_db)):
     """
     Fetches all system/application execution logs ordered by created_at desc.
     """
-    return db.query(models.SystemLog).order_by(models.SystemLog.created_at.desc()).limit(200).all()
+    return db.query(models.SystemLog).order_by(models.SystemLog.created_at.desc()).limit(500).all()
 
 @router.get("/{task_id}", response_model=schemas.TaskLogResponse)
 def get_task_logs(task_id: str, db: Session = Depends(get_db)):

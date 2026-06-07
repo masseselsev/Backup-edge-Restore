@@ -22,6 +22,25 @@ try:
 except Exception as e:
     logger.error(f"Failed to setup DB logging for Celery worker: {str(e)}")
 
+from celery.signals import after_setup_logger, after_setup_task_logger
+
+@after_setup_logger.connect
+def setup_celery_logging(logger, **kwargs):
+    try:
+        from database import setup_db_logging
+        setup_db_logging()
+    except Exception as e:
+        logger.error(f"Failed to setup DB logging after celery logger setup: {str(e)}")
+
+@after_setup_task_logger.connect
+def setup_celery_task_logging(logger, **kwargs):
+    try:
+        from database import setup_db_logging
+        setup_db_logging()
+    except Exception as e:
+        logger.error(f"Failed to setup DB logging after celery task logger setup: {str(e)}")
+
+
 # Initialize Celery
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 celery_app = Celery("tasks", broker=REDIS_URL, backend=REDIS_URL)

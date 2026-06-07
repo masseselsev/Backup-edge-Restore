@@ -33,6 +33,9 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
   const [debugLogs, setDebugLogs] = useState<SystemLog[]>([]);
   const [loadingDebug, setLoadingDebug] = useState(false);
   const terminalEndRef = useRef<HTMLDivElement>(null);
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const isInitialLoad = useRef(true);
+
 
   const fetchTasks = async () => {
     try {
@@ -77,10 +80,24 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
     }
   }, [debugMode]);
 
-  // Scroll to bottom when new logs arrive in debug mode
+  // Reset initial load flag when entering debug mode
   useEffect(() => {
-    if (debugMode && terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (debugMode) {
+      isInitialLoad.current = true;
+    }
+  }, [debugMode]);
+
+  // Scroll to bottom when new logs arrive, but only if user is already near the bottom or on initial load
+  useEffect(() => {
+    if (debugMode && terminalContainerRef.current) {
+      const container = terminalContainerRef.current;
+      const threshold = 100; // pixels from bottom
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      
+      if (isNearBottom || isInitialLoad.current) {
+        terminalEndRef.current?.scrollIntoView({ behavior: isInitialLoad.current ? 'auto' : 'smooth' });
+        isInitialLoad.current = false;
+      }
     }
   }, [debugLogs, debugMode]);
 
@@ -208,11 +225,14 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
               <ShieldAlert size={14} className="text-amber-500" />
-              Live orchestrator backend log output (Last 200 lines)
+              Live orchestrator backend log output (Last 500 lines)
             </span>
             {loadingDebug && <RefreshCw size={12} className="animate-spin text-zinc-500" />}
           </div>
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 font-mono text-xs overflow-y-auto h-[500px] flex flex-col space-y-1 scrollbar-thin scrollbar-thumb-zinc-800">
+          <div 
+            ref={terminalContainerRef}
+            className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 font-mono text-xs overflow-y-auto h-[500px] flex flex-col space-y-1 scrollbar-thin scrollbar-thumb-zinc-800"
+          >
             {debugLogs.length === 0 ? (
               <span className="text-zinc-500">Waiting for log records... Make sure orchestrator is active.</span>
             ) : (
