@@ -18,6 +18,13 @@ export default function ClientIsoTab() {
   const [successMsg, setSuccessMsg] = useState('');
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
+  // Custom ISO Source States
+  const [isoSourceType, setIsoSourceType] = useState<'official' | 'url' | 'upload'>('official');
+  const [customIsoUrl, setCustomIsoUrl] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   const fetchStatus = async () => {
     try {
       const res = await fetch('/api/iso/status');
@@ -69,7 +76,12 @@ export default function ClientIsoTab() {
   const handleCacheBaseIso = async () => {
     setIsDownloadingBase(true);
     try {
-      const res = await fetch('/api/iso/download_base', { method: 'POST' });
+      const body = isoSourceType === 'url' ? JSON.stringify({ url: customIsoUrl }) : JSON.stringify({});
+      const res = await fetch('/api/iso/download_base', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      });
       if (!res.ok) throw new Error('Failed to start base ISO download');
       setSuccessMsg('Base ISO download started in the background. It may take several minutes depending on network speed.');
     } catch (e: any) {
@@ -77,6 +89,62 @@ export default function ClientIsoTab() {
     } finally {
       setIsDownloadingBase(false);
     }
+  };
+
+  const handleClearCache = async () => {
+    try {
+      await fetch('/api/iso/base', { method: 'DELETE' });
+      setSuccessMsg('Base ISO cache cleared.');
+      fetchStatus();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const handleUpload = () => {
+    if (!fileInputRef.current?.files?.[0]) return;
+    const file = fileInputRef.current.files[0];
+    if (!file.name.endsWith('.iso')) {
+      setError('Please select a valid .iso file');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    setError('');
+    
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    
+    xhr.onload = () => {
+      setIsUploading(false);
+      if (xhr.status === 200) {
+        setSuccessMsg('Custom Base ISO uploaded successfully!');
+        fetchStatus();
+      } else {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          setError(res.detail || 'Upload failed');
+        } catch {
+          setError('Upload failed');
+        }
+      }
+    };
+    
+    xhr.onerror = () => {
+      setIsUploading(false);
+      setError('Network error during upload');
+    };
+
+    xhr.open('POST', '/api/iso/upload_base');
+    xhr.send(formData);
   };
 
   return (
@@ -144,39 +212,138 @@ export default function ClientIsoTab() {
             <h3 className="text-sm font-bold text-white mb-4">Pipeline Status</h3>
             
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
-                <div>
-                  <div className="text-xs font-bold text-white">Base Debian ISO Cache</div>
-                  <div className="text-[10px] text-zinc-500">debian-live-testing-amd64-xfce.iso</div>
-                  
-                  {/* Progress Bar for Base ISO Download */}
-                  {status?.base_iso_progress !== undefined && status.base_iso_progress >= 0 && !status.base_iso_cached && (
-                    <div className="mt-2 w-full max-w-[200px]">
-                      <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
-                        <span className="text-zinc-400">
-                          {status.base_iso_progress === 100 ? 'Validating checksum...' : 'Downloading...'}
-                        </span>
-                        <span className="text-sky-400">{status.base_iso_progress}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full transition-all duration-1000 ease-out"
-                          style={{ width: `${status.base_iso_progress}%` }}
-                        />
-                      </div>
+              <div className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="text-xs font-bold text-white">Base Debian ISO Cache</div>
+                    <div className="text-[10px] text-zinc-500">
+                      {status?.base_iso_cached ? 'ISO image is ready' : 'Select base ISO source'}
+                    </div>
+                  </div>
+                  {status?.base_iso_cached && (
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="text-emerald-400" size={20} />
+                      <button 
+                        onClick={handleClearCache}
+                        className="p-1 hover:bg-rose-500/20 text-rose-400 rounded transition-colors"
+                        title="Clear Cached ISO"
+                      >
+                        <RefreshCw size={16} />
+                      </button>
                     </div>
                   )}
                 </div>
-                {status?.base_iso_cached ? (
-                  <CheckCircle className="text-emerald-400" size={20} />
-                ) : (
-                  <button
-                    onClick={handleCacheBaseIso}
-                    disabled={isDownloadingBase}
-                    className="px-3 py-1 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors"
-                  >
-                    {isDownloadingBase ? 'DOWNLOADING...' : 'CACHE NOW'}
-                  </button>
+
+                {!status?.base_iso_cached && (
+                  <div className="space-y-4">
+                    <div className="flex bg-zinc-900 rounded-lg p-1 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsoSourceType('official')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'official' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                      >
+                        Official
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsoSourceType('url')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'url' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                      >
+                        Custom URL
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsoSourceType('upload')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'upload' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                      >
+                        Upload
+                      </button>
+                    </div>
+
+                    {isoSourceType === 'official' && (
+                      <div className="flex flex-col gap-2">
+                        <div className="text-[10px] text-zinc-400">debian-live-testing-amd64-xfce.iso (4GB)</div>
+                        <button
+                          onClick={handleCacheBaseIso}
+                          disabled={isDownloadingBase}
+                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors"
+                        >
+                          {isDownloadingBase ? 'DOWNLOADING...' : 'START DOWNLOAD'}
+                        </button>
+                      </div>
+                    )}
+
+                    {isoSourceType === 'url' && (
+                      <div className="flex flex-col gap-2">
+                        <input 
+                          type="url" 
+                          placeholder="https://example.com/custom.iso"
+                          value={customIsoUrl}
+                          onChange={(e) => setCustomIsoUrl(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-md text-white text-xs focus:border-indigo-500 focus:outline-none"
+                        />
+                        <button
+                          onClick={handleCacheBaseIso}
+                          disabled={isDownloadingBase || !customIsoUrl}
+                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50"
+                        >
+                          {isDownloadingBase ? 'DOWNLOADING...' : 'DOWNLOAD FROM URL'}
+                        </button>
+                      </div>
+                    )}
+
+                    {isoSourceType === 'upload' && (
+                      <div className="flex flex-col gap-2">
+                        <input 
+                          type="file" 
+                          accept=".iso"
+                          ref={fileInputRef}
+                          className="w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-zinc-800 file:text-white hover:file:bg-zinc-700 transition-colors"
+                        />
+                        <button
+                          onClick={handleUpload}
+                          disabled={isUploading}
+                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50"
+                        >
+                          {isUploading ? `UPLOADING (${uploadProgress}%)` : 'UPLOAD ISO'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Download Progress */}
+                    {status?.base_iso_progress !== undefined && status.base_iso_progress >= 0 && (
+                      <div className="mt-2 w-full">
+                        <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
+                          <span className="text-zinc-400">
+                            {status.base_iso_progress === 100 ? 'Validating...' : 'Downloading...'}
+                          </span>
+                          <span className="text-sky-400">{status.base_iso_progress}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full transition-all duration-1000 ease-out"
+                            style={{ width: `${status.base_iso_progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Upload Progress */}
+                    {isUploading && (
+                      <div className="mt-2 w-full">
+                        <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
+                          <span className="text-zinc-400">Uploading file...</span>
+                          <span className="text-emerald-400">{uploadProgress}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-emerald-500 rounded-full transition-all duration-200 ease-out"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 

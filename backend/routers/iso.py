@@ -1,8 +1,8 @@
 import os
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from iso_tasks import generate_client_iso_task, download_base_iso_task, CACHE_DIR
 from models import TaskLog
@@ -14,6 +14,9 @@ class GenerateIsoRequest(BaseModel):
     target_ip: str
     auth_token: str
 
+class BaseIsoDownloadRequest(BaseModel):
+    url: Optional[str] = None
+
 @router.post("/generate")
 def generate_iso(req: GenerateIsoRequest):
     try:
@@ -23,12 +26,46 @@ def generate_iso(req: GenerateIsoRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/download_base")
-def trigger_base_download():
+def trigger_base_download(req: BaseIsoDownloadRequest = None):
     try:
-        task = download_base_iso_task.delay()
+        url = req.url if req else None
+        task = download_base_iso_task.delay(url=url)
         return {"task_id": task.id, "message": "Base ISO download started."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/upload_base")
+def upload_base_iso(file: UploadFile = File(...)):
+    if not file.filename.endswith(".iso"):
+        raise HTTPException(status_code=400, detail="Only .iso files are allowed")
+    
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    base_iso_path = os.path.join(CACHE_DIR, "base.iso")
+    
+    try:
+        with open(base_iso_path, "wb") as f:
+            import shutil
+            shutil.copyfileobj(file.file, f)
+        
+        # Save actual size for progress UI
+        with open(os.path.join(CACHE_DIR, "base.iso.size"), "w") as f:
+            f.write(str(os.path.getsize(base_iso_path)))
+            
+        return {"status": "SUCCESS", "message": "Base ISO uploaded successfully."}
+    except Exception as e:
+        if os.path.exists(base_iso_path):
+            os.remove(base_iso_path)
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+
+@router.delete("/base")
+def clear_base_iso():
+    base_iso_path = os.path.join(CACHE_DIR, "base.iso")
+    size_file = os.path.join(CACHE_DIR, "base.iso.size")
+    if os.path.exists(base_iso_path):
+        os.remove(base_iso_path)
+    if os.path.exists(size_file):
+        os.remove(size_file)
+    return {"status": "SUCCESS", "message": "Base ISO cache cleared."}
 
 @router.get("/download")
 def download_iso():

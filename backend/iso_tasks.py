@@ -15,7 +15,7 @@ BASE_ISO_PATH = os.path.join(CACHE_DIR, "base.iso")
 BASE_ISO_PATH_TMP = BASE_ISO_PATH + ".tmp"
 
 @celery_app.task(bind=True)
-def download_base_iso_task(self) -> Dict[str, Any]:
+def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
     os.makedirs(CACHE_DIR, exist_ok=True)
     if os.path.exists(BASE_ISO_PATH):
         if os.path.getsize(BASE_ISO_PATH) > 1000 * 1024 * 1024:
@@ -23,13 +23,16 @@ def download_base_iso_task(self) -> Dict[str, Any]:
         else:
             os.remove(BASE_ISO_PATH)
     
+    download_url = url if url else BASE_ISO_URL
+    is_official = download_url == BASE_ISO_URL
+
     try:
-        logger.info(f"Downloading Base ISO from {BASE_ISO_URL}...")
+        logger.info(f"Downloading Base ISO from {download_url}...")
         
         # Fetch the real size of the ISO
         try:
             import urllib.request
-            req = urllib.request.Request(BASE_ISO_URL, method='HEAD')
+            req = urllib.request.Request(download_url, method='HEAD')
             with urllib.request.urlopen(req) as response:
                 content_length = response.getheader('Content-Length')
                 if content_length:
@@ -39,36 +42,39 @@ def download_base_iso_task(self) -> Dict[str, Any]:
             logger.warning(f"Could not fetch ISO size dynamically: {e}")
 
         # Use curl to download the file safely to a temporary path with fail-fast (-f)
-        subprocess.check_call(["curl", "-f", "-L", "-o", BASE_ISO_PATH_TMP, BASE_ISO_URL])
+        subprocess.check_call(["curl", "-f", "-L", "-o", BASE_ISO_PATH_TMP, download_url])
 
-        logger.info("Downloading SHA512SUMS for validation...")
-        sums_url = BASE_ISO_URL.rsplit('/', 1)[0] + "/SHA512SUMS"
-        sums_path = os.path.join(CACHE_DIR, "SHA512SUMS")
-        subprocess.check_call(["curl", "-f", "-sL", "-o", sums_path, sums_url])
-        
-        iso_filename = os.path.basename(BASE_ISO_URL)
-        expected_hash = None
-        with open(sums_path, 'r') as f:
-            for line in f:
-                if iso_filename in line:
-                    expected_hash = line.split()[0]
-                    break
-                    
-        if not expected_hash:
-            raise Exception("Could not find expected hash in SHA512SUMS")
+        if is_official:
+            logger.info("Downloading SHA512SUMS for validation...")
+            sums_url = download_url.rsplit('/', 1)[0] + "/SHA512SUMS"
+            sums_path = os.path.join(CACHE_DIR, "SHA512SUMS")
+            subprocess.check_call(["curl", "-f", "-sL", "-o", sums_path, sums_url])
             
-        logger.info(f"Validating ISO checksum (expected: {expected_hash[:8]}...)..")
-        hasher = hashlib.sha512()
-        with open(BASE_ISO_PATH_TMP, 'rb') as f:
-            for chunk in iter(lambda: f.read(4096 * 1024), b""):
-                hasher.update(chunk)
+            iso_filename = os.path.basename(download_url)
+            expected_hash = None
+            with open(sums_path, 'r') as f:
+                for line in f:
+                    if iso_filename in line:
+                        expected_hash = line.split()[0]
+                        break
+                        
+            if not expected_hash:
+                raise Exception("Could not find expected hash in SHA512SUMS")
                 
-        actual_hash = hasher.hexdigest()
-        if actual_hash != expected_hash:
-            raise Exception(f"Checksum mismatch! Expected {expected_hash}, got {actual_hash}")
+            logger.info(f"Validating ISO checksum (expected: {expected_hash[:8]}...)..")
+            hasher = hashlib.sha512()
+            with open(BASE_ISO_PATH_TMP, 'rb') as f:
+                for chunk in iter(lambda: f.read(4096 * 1024), b""):
+                    hasher.update(chunk)
+                    
+            actual_hash = hasher.hexdigest()
+            if actual_hash != expected_hash:
+                raise Exception(f"Checksum mismatch! Expected {expected_hash}, got {actual_hash}")
+        else:
+            logger.info("Custom ISO URL provided. Skipping SHA512 validation.")
             
         os.rename(BASE_ISO_PATH_TMP, BASE_ISO_PATH)
-        return {"status": "SUCCESS", "message": "Base ISO downloaded and verified successfully."}
+        return {"status": "SUCCESS", "message": "Base ISO downloaded successfully."}
     except Exception as e:
         logger.error(f"Download or validation failed: {e}")
         if os.path.exists(BASE_ISO_PATH_TMP):
