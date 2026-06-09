@@ -173,6 +173,14 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         kiosk_dst = os.path.join(payload_dir, "etc", "xdg", "autostart", "offline-kiosk.desktop")
         shutil.copy2(kiosk_src, kiosk_dst)
 
+        # Inject Init-bottom Copy Script to persist payload files across switch_root
+        init_bottom_dir = os.path.join(payload_dir, "scripts", "init-bottom")
+        os.makedirs(init_bottom_dir, exist_ok=True)
+        init_bottom_src = "/payload_client/init-bottom-copy-payload.sh"
+        init_bottom_dst = os.path.join(init_bottom_dir, "copy-payload")
+        shutil.copy2(init_bottom_src, init_bottom_dst)
+        os.chmod(init_bottom_dst, 0o755)
+
         # Inject Python site-packages dependencies
         site_packages_dst = os.path.join(opt_offline, "backend", "site-packages")
         os.makedirs(site_packages_dst, exist_ok=True)
