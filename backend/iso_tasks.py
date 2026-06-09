@@ -9,7 +9,7 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-BASE_ISO_URL = "https://cdimage.debian.org/cdimage/weekly-live-builds/amd64/iso-hybrid/debian-live-testing-amd64-xfce.iso"
+BASE_ISO_URL = "https://cdimage.debian.org/cdimage/archive/12.14.0-live/amd64/iso-hybrid/debian-live-12.14.0-amd64-xfce.iso"
 CACHE_DIR = "/opt/data/iso_cache"
 BASE_ISO_PATH = os.path.join(CACHE_DIR, "base.iso")
 BASE_ISO_PATH_TMP = BASE_ISO_PATH + ".tmp"
