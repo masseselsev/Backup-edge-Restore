@@ -61,10 +61,13 @@ def upload_base_iso(file: UploadFile = File(...)):
 def clear_base_iso():
     base_iso_path = os.path.join(CACHE_DIR, "base.iso")
     size_file = os.path.join(CACHE_DIR, "base.iso.size")
+    client_iso_path = os.path.join(CACHE_DIR, "technician_client_v1.iso")
     if os.path.exists(base_iso_path):
         os.remove(base_iso_path)
     if os.path.exists(size_file):
         os.remove(size_file)
+    if os.path.exists(client_iso_path):
+        os.remove(client_iso_path)
     return {"status": "SUCCESS", "message": "Base ISO cache cleared."}
 
 @router.get("/download")
