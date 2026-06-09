@@ -181,6 +181,13 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         shutil.copy2(init_bottom_src, init_bottom_dst)
         os.chmod(init_bottom_dst, 0o755)
 
+        # Inject param.conf trigger to execute init-bottom copy-payload hook
+        conf_dir = os.path.join(payload_dir, "conf")
+        os.makedirs(conf_dir, exist_ok=True)
+        conf_src = "/payload_client/conf/param.conf"
+        conf_dst = os.path.join(conf_dir, "param.conf")
+        shutil.copy2(conf_src, conf_dst)
+
         # Inject Python site-packages dependencies
         site_packages_dst = os.path.join(opt_offline, "backend", "site-packages")
         os.makedirs(site_packages_dst, exist_ok=True)
