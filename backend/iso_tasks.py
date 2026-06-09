@@ -142,11 +142,25 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         if os.path.exists("/opt/frontend_build"):
             shutil.copytree("/opt/frontend_build", os.path.join(opt_offline, "backend", "frontend_build"))
 
-        # Inject Systemd Service
+        # Inject Systemd Backend Service
         svc_src = "/payload_client/systemd/offline-backend.service"
         svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "offline-backend.service")
         shutil.copy2(svc_src, svc_dst)
         os.symlink("/etc/systemd/system/offline-backend.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "offline-backend.service"))
+
+        # Inject SSH Installer Service
+        ssh_svc_src = "/payload_client/systemd/offline-ssh-install.service"
+        ssh_svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "offline-ssh-install.service")
+        shutil.copy2(ssh_svc_src, ssh_svc_dst)
+        os.symlink("/etc/systemd/system/offline-ssh-install.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "offline-ssh-install.service"))
+
+        # Copy Offline SSH Packages (.deb files)
+        pkg_dst = os.path.join(payload_dir, "opt", "offline-client", "packages")
+        os.makedirs(pkg_dst, exist_ok=True)
+        if os.path.exists("/opt/offline-packages"):
+            for file in os.listdir("/opt/offline-packages"):
+                if file.endswith(".deb"):
+                    shutil.copy2(os.path.join("/opt/offline-packages", file), os.path.join(pkg_dst, file))
 
         # Inject Kiosk Launcher Script
         launcher_src = "/payload_client/kiosk-launcher.sh"
@@ -191,6 +205,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
         # 4. Modify Bootloaders (GRUB & Syslinux) to load payload.img
         log_to_task(task_id, "[PROGRESS] 60:Updating bootloader configurations...")
+        import re
         
         # Update GRUB
         grub_cfg = os.path.join(iso_unpacked, "boot", "grub", "grub.cfg")
@@ -198,7 +213,11 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             with open(grub_cfg, "r") as f:
                 content = f.read()
             if "payload.img" not in content:
-                content = content.replace("initrd /live/initrd.img", "initrd /live/initrd.img /live/payload.img")
+                content = re.sub(
+                    r'(initrd\s+(/live/initrd\.img[^\s\n]*))',
+                    r'\1 /live/payload.img',
+                    content
+                )
                 with open(grub_cfg, "w") as f:
                     f.write(content)
 
@@ -210,7 +229,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                     with open(filepath, "r") as f:
                         content = f.read()
                     if "payload.img" not in content:
-                        content = content.replace("initrd=/live/initrd.img", "initrd=/live/initrd.img,/live/payload.img")
+                        # Handle both "initrd /live/initrd.img" and "initrd=/live/initrd.img" formats
+                        content = re.sub(
+                            r'(initrd\s+(/live/initrd\.img[^\s\n,]*))',
+                            r'\1,/live/payload.img',
+                            content
+                        )
+                        content = re.sub(
+                            r'(initrd=(/live/initrd\.img[^\s\n,]*))',
+                            r'\1,/live/payload.img',
+                            content
+                        )
                         with open(filepath, "w") as f:
                             f.write(content)
 

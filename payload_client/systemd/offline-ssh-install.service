@@ -1,0 +1,14 @@
+[Unit]
+Description=Install Offline SSH Server Packages
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'dpkg -i /opt/offline-client/packages/*.deb && systemctl daemon-reload && systemctl start ssh'
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

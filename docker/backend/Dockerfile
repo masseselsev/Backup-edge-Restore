@@ -2,6 +2,9 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     ssh openssh-client sshpass rsync curl parted util-linux dosfstools e2fsprogs systemd iproute2 borgbackup udev \
     xorriso squashfs-tools syslinux syslinux-common isolinux cpio \
+    && mkdir -p /opt/offline-packages \
+    && cd /opt/offline-packages \
+    && apt-get download openssh-server openssh-client openssh-sftp-server \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt .
