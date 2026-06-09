@@ -100,7 +100,7 @@ def get_iso_status():
         progress = min(100, int((size / total_size) * 100))
         
     return {
-        "base_iso_cached": base_exists,
+        "base_iso_cached": base_exists or client_exists,
         "base_iso_progress": progress,
         "client_iso_ready": client_exists
     }

@@ -101,9 +101,16 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             logger.warning("Cached Base ISO is too small (corrupted). Deleting it.")
             os.remove(BASE_ISO_PATH)
 
+    output_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
+    base_iso_to_use = BASE_ISO_PATH
+
     if not os.path.exists(BASE_ISO_PATH):
-        log_to_task(task_id, "[PROGRESS] 5:Downloading Base ISO...")
-        subprocess.check_call(["curl", "-L", "-o", BASE_ISO_PATH, BASE_ISO_URL])
+        if os.path.exists(output_iso) and os.path.getsize(output_iso) > 1000 * 1024 * 1024:
+            logger.info("Base ISO not found, but client ISO exists. Using existing client ISO as base.")
+            base_iso_to_use = output_iso
+        else:
+            log_to_task(task_id, "[PROGRESS] 5:Downloading Base ISO...")
+            subprocess.check_call(["curl", "-L", "-o", BASE_ISO_PATH, BASE_ISO_URL])
 
     work_dir = f"/tmp/iso_gen_{task_id}"
     iso_unpacked = os.path.join(work_dir, "iso_unpacked")
@@ -113,7 +120,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # 1. Unpack Base ISO
         log_to_task(task_id, "[PROGRESS] 10:Unpacking base ISO...")
         os.makedirs(work_dir, exist_ok=True)
-        subprocess.check_call(["xorriso", "-osirrox", "on", "-indev", BASE_ISO_PATH, "-extract", "/", iso_unpacked])
+        subprocess.check_call(["xorriso", "-osirrox", "on", "-indev", base_iso_to_use, "-extract", "/", iso_unpacked])
 
         # Make iso_unpacked writable
         subprocess.check_call(["chmod", "-R", "+w", iso_unpacked])
@@ -190,9 +197,10 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         if os.path.exists(grub_cfg):
             with open(grub_cfg, "r") as f:
                 content = f.read()
-            content = content.replace("initrd /live/initrd.img", "initrd /live/initrd.img /live/payload.img")
-            with open(grub_cfg, "w") as f:
-                f.write(content)
+            if "payload.img" not in content:
+                content = content.replace("initrd /live/initrd.img", "initrd /live/initrd.img /live/payload.img")
+                with open(grub_cfg, "w") as f:
+                    f.write(content)
 
         # Update Syslinux (isolinux)
         for root_dir, _, files in os.walk(os.path.join(iso_unpacked, "isolinux")):
@@ -201,9 +209,10 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                     filepath = os.path.join(root_dir, file)
                     with open(filepath, "r") as f:
                         content = f.read()
-                    content = content.replace("initrd=/live/initrd.img", "initrd=/live/initrd.img,/live/payload.img")
-                    with open(filepath, "w") as f:
-                        f.write(content)
+                    if "payload.img" not in content:
+                        content = content.replace("initrd=/live/initrd.img", "initrd=/live/initrd.img,/live/payload.img")
+                        with open(filepath, "w") as f:
+                            f.write(content)
 
         # 5. Update MD5 Sums
         log_to_task(task_id, "[PROGRESS] 75:Updating ISO checksums...")
