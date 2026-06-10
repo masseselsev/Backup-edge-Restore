@@ -328,8 +328,8 @@ def trigger_restore(req: RestoreRequest, background_tasks: BackgroundTasks):
 def exit_kiosk():
     """Kills the web browser running in kiosk mode to exit back to desktop."""
     try:
-        # Kill chromium, chromium-browser, firefox, firefox-esr
-        subprocess.run("pkill -f 'chromium|firefox'", shell=True)
+        # Kill chromium, chromium-browser, firefox, firefox-esr, and x-www-browser
+        subprocess.run("pkill -f 'chromium|firefox|x-www-browser'", shell=True)
         return {"status": "SUCCESS", "message": "Kiosk exited."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
