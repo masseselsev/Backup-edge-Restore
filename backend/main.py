@@ -50,6 +50,15 @@ def startup_db_init():
     except Exception as e:
         print(f"Error ensuring repository permissions on startup: {str(e)}")
 
+    # Clear any stale download lock file from a previous crash/reboot
+    try:
+        lock_path = "/opt/data/iso_cache/download.lock"
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
+            print("Cleared stale download lock on startup.")
+    except Exception as e:
+        print(f"Error clearing stale download lock on startup: {str(e)}")
+
     db = next(get_db())
     upgrade_settings(db)
     db.close()

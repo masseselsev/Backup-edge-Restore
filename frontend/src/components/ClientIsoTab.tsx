@@ -23,6 +23,7 @@ export default function ClientIsoTab() {
   const [customIsoUrl, setCustomIsoUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [lastTriggerTime, setLastTriggerTime] = useState<number>(0);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const fetchStatus = async () => {
@@ -30,6 +31,15 @@ export default function ClientIsoTab() {
       const res = await fetch('/api/iso/status');
       const data = await res.json();
       setStatus(data);
+      
+      const timeSinceTrigger = Date.now() - lastTriggerTime;
+      // Only reset isDownloadingBase if the backend says it is not downloading
+      // AND we did not just trigger a download in the last 6 seconds (avoids state flicker before task starts on backend)
+      if (timeSinceTrigger > 6000) {
+        if (data && (data.base_iso_cached || data.base_iso_progress < 0)) {
+          setIsDownloadingBase(false);
+        }
+      }
     } catch (e) {
       console.error(e);
     }
@@ -39,7 +49,7 @@ export default function ClientIsoTab() {
     fetchStatus();
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [lastTriggerTime]);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +84,10 @@ export default function ClientIsoTab() {
   };
 
   const handleCacheBaseIso = async () => {
+    if (isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0)) {
+      return;
+    }
+    setLastTriggerTime(Date.now());
     setIsDownloadingBase(true);
     try {
       const body = isoSourceType === 'url' ? JSON.stringify({ url: customIsoUrl }) : JSON.stringify({});
@@ -82,12 +96,14 @@ export default function ClientIsoTab() {
         headers: { 'Content-Type': 'application/json' },
         body
       });
-      if (!res.ok) throw new Error('Failed to start base ISO download');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to start base ISO download');
       setSuccessMsg('Base ISO download started in the background. It may take several minutes depending on network speed.');
+      // Force status poll
+      fetchStatus();
     } catch (e: any) {
-      setError(e.message);
-    } finally {
       setIsDownloadingBase(false);
+      setError(e.message);
     }
   };
 
@@ -265,10 +281,10 @@ export default function ClientIsoTab() {
                         <div className="text-[10px] text-zinc-400">debian-live-testing-amd64-xfce.iso (4GB)</div>
                         <button
                           onClick={handleCacheBaseIso}
-                          disabled={isDownloadingBase}
-                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors"
+                          disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0)}
+                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isDownloadingBase ? 'DOWNLOADING...' : 'START DOWNLOAD'}
+                          {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? 'DOWNLOADING...' : 'START DOWNLOAD'}
                         </button>
                       </div>
                     )}
@@ -284,10 +300,10 @@ export default function ClientIsoTab() {
                         />
                         <button
                           onClick={handleCacheBaseIso}
-                          disabled={isDownloadingBase || !customIsoUrl}
-                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50"
+                          disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) || !customIsoUrl}
+                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isDownloadingBase ? 'DOWNLOADING...' : 'DOWNLOAD FROM URL'}
+                          {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? 'DOWNLOADING...' : 'DOWNLOAD FROM URL'}
                         </button>
                       </div>
                     )}

@@ -43,4 +43,10 @@ if [ -d /etc/xdg/autostart ]; then
     fi
 fi
 
+# Copy etc/skel files (like Desktop shortcut)
+if [ -d /etc/skel ]; then
+    mkdir -p /root/etc/skel
+    cp -r /etc/skel/* /root/etc/skel/
+fi
+
 echo "Offline Client: Payload files copy completed!"

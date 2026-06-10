@@ -9,7 +9,12 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-BASE_ISO_URL = "https://cdimage.debian.org/cdimage/weekly-live-builds/amd64/iso-hybrid/debian-live-testing-amd64-xfce.iso"
+DEFAULT_MIRROR_URLS = [
+    "https://mirror.yandex.ru/debian-cd/current-live/amd64/iso-hybrid/debian-live-13.5.0-amd64-xfce.iso",
+    "https://mirrors.edge.kernel.org/debian-cd/current-live/amd64/iso-hybrid/debian-live-13.5.0-amd64-xfce.iso",
+    "https://cdimage.debian.org/cdimage/weekly-live-builds/amd64/iso-hybrid/debian-live-testing-amd64-xfce.iso"
+]
+BASE_ISO_URL = DEFAULT_MIRROR_URLS[0]
 CACHE_DIR = "/opt/data/iso_cache"
 BASE_ISO_PATH = os.path.join(CACHE_DIR, "base.iso")
 BASE_ISO_PATH_TMP = BASE_ISO_PATH + ".tmp"
@@ -17,38 +22,77 @@ BASE_ISO_PATH_TMP = BASE_ISO_PATH + ".tmp"
 @celery_app.task(bind=True)
 def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
     os.makedirs(CACHE_DIR, exist_ok=True)
-    if os.path.exists(BASE_ISO_PATH):
-        if os.path.getsize(BASE_ISO_PATH) > 1000 * 1024 * 1024:
-            return {"status": "SUCCESS", "message": "Base ISO already cached."}
-        else:
-            os.remove(BASE_ISO_PATH)
+    lock_path = os.path.join(CACHE_DIR, "download.lock")
     
-    download_url = url if url else BASE_ISO_URL
-    is_official = download_url == BASE_ISO_URL
-
     try:
-        logger.info(f"Downloading Base ISO from {download_url}...")
+        if os.path.exists(BASE_ISO_PATH):
+            if os.path.getsize(BASE_ISO_PATH) > 1000 * 1024 * 1024:
+                return {"status": "SUCCESS", "message": "Base ISO already cached."}
+            else:
+                os.remove(BASE_ISO_PATH)
         
-        # Fetch the real size of the ISO
+        urls_to_try = [url] if url else DEFAULT_MIRROR_URLS
+        download_url = None
+        content_length = None
+
+        for attempt_url in urls_to_try:
+            logger.info(f"Checking mirror: {attempt_url}")
+            try:
+                header_out = subprocess.check_output([
+                    "curl", "-4", "--connect-timeout", "5", "--retry", "1", "-s", "-I", "-L", attempt_url
+                ]).decode('utf-8', errors='ignore')
+                
+                temp_length = None
+                for line in header_out.splitlines():
+                    if line.lower().startswith("content-length:"):
+                        temp_length = line.split(":", 1)[1].strip()
+                
+                if temp_length and temp_length.isdigit():
+                    content_length = temp_length
+                    download_url = attempt_url
+                    logger.info(f"Mirror verified. Content-Length: {content_length}. Selected URL: {download_url}")
+                    break
+            except Exception as e:
+                logger.warning(f"Mirror check failed for {attempt_url}: {e}")
+
+        if not download_url:
+            download_url = urls_to_try[0]
+            logger.warning(f"All mirror checks failed. Falling back to primary URL: {download_url}")
+
+        if content_length:
+            try:
+                with open(os.path.join(CACHE_DIR, "base.iso.size"), "w") as f:
+                    f.write(content_length)
+            except Exception as size_err:
+                logger.warning(f"Could not write base.iso.size file: {size_err}")
+
+        is_official = download_url in DEFAULT_MIRROR_URLS
+        logger.info(f"Downloading Base ISO from {download_url}...")
+
+        # Check if another curl process is already downloading to the tmp path
         try:
-            import urllib.request
-            req = urllib.request.Request(download_url, method='HEAD')
-            with urllib.request.urlopen(req) as response:
-                content_length = response.getheader('Content-Length')
-                if content_length:
-                    with open(os.path.join(CACHE_DIR, "base.iso.size"), "w") as f:
-                        f.write(content_length)
-        except Exception as e:
-            logger.warning(f"Could not fetch ISO size dynamically: {e}")
+            pgrep_out = subprocess.check_output(["pgrep", "-f", "curl.*base.iso.tmp"]).decode().strip()
+            if pgrep_out:
+                logger.warning(f"Another curl process (PIDs: {pgrep_out}) is already downloading. Aborting this task to prevent conflict.")
+                return {"status": "SUCCESS", "message": "Base ISO download already in progress."}
+        except subprocess.CalledProcessError:
+            pass
 
         # Use curl to download the file safely to a temporary path with fail-fast (-f)
-        subprocess.check_call(["curl", "-f", "-L", "-o", BASE_ISO_PATH_TMP, download_url])
+        # Relaxed speed limits to prevent download failures on slow connections
+        subprocess.check_call([
+            "curl", "-4", "--connect-timeout", "15", "--retry", "3", "--retry-delay", "2",
+            "-f", "-L", "-o", BASE_ISO_PATH_TMP, download_url
+        ])
 
         if is_official:
             logger.info("Downloading SHA512SUMS for validation...")
             sums_url = download_url.rsplit('/', 1)[0] + "/SHA512SUMS"
             sums_path = os.path.join(CACHE_DIR, "SHA512SUMS")
-            subprocess.check_call(["curl", "-f", "-sL", "-o", sums_path, sums_url])
+            subprocess.check_call([
+                "curl", "-4", "--connect-timeout", "15", "--retry", "3", "--retry-delay", "2",
+                "-f", "-sL", "-o", sums_path, sums_url
+            ])
             
             iso_filename = os.path.basename(download_url)
             expected_hash = None
@@ -80,6 +124,19 @@ def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
         if os.path.exists(BASE_ISO_PATH_TMP):
             os.remove(BASE_ISO_PATH_TMP)
         return {"status": "FAILED", "error": str(e)}
+    finally:
+        # Only clean up lock file if no other download process is currently active
+        try:
+            pgrep_out = subprocess.check_output(["pgrep", "-f", "curl.*base.iso.tmp"]).decode().strip()
+            has_active_curl = bool(pgrep_out)
+        except subprocess.CalledProcessError:
+            has_active_curl = False
+
+        if not has_active_curl and os.path.exists(lock_path):
+            try:
+                os.remove(lock_path)
+            except Exception as le:
+                logger.error(f"Failed to remove download lock file: {le}")
 
 @celery_app.task(bind=True)
 def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str, Any]:
@@ -110,7 +167,27 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             base_iso_to_use = output_iso
         else:
             log_to_task(task_id, "[PROGRESS] 5:Downloading Base ISO...")
-            subprocess.check_call(["curl", "-L", "-o", BASE_ISO_PATH, BASE_ISO_URL])
+            # Use the mirror sequence checking logic to select the working URL
+            download_url = None
+            for attempt_url in DEFAULT_MIRROR_URLS:
+                logger.info(f"Checking mirror for client ISO generation: {attempt_url}")
+                try:
+                    subprocess.check_call([
+                        "curl", "-4", "--connect-timeout", "5", "--retry", "1", "-s", "-I", "-L", attempt_url
+                    ])
+                    download_url = attempt_url
+                    break
+                except Exception as e:
+                    logger.warning(f"Mirror check failed for {attempt_url}: {e}")
+            
+            if not download_url:
+                download_url = DEFAULT_MIRROR_URLS[0]
+                logger.warning(f"All mirror checks failed. Falling back to primary URL: {download_url}")
+
+            subprocess.check_call([
+                "curl", "-4", "--connect-timeout", "15", "--retry", "3", "--retry-delay", "2",
+                "-f", "-L", "-o", BASE_ISO_PATH, download_url
+            ])
 
     work_dir = f"/tmp/iso_gen_{task_id}"
     iso_unpacked = os.path.join(work_dir, "iso_unpacked")
@@ -232,6 +309,41 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         with open(os.path.join(opt_offline, "backend", "config.json"), "w") as f:
             json.dump(config_data, f)
 
+        # Save token for validation in routers/iso.py
+        token_file = os.path.join(CACHE_DIR, "auth_token.txt")
+        with open(token_file, "w") as f:
+            f.write(auth_token.strip())
+
+        # Ensure orchestrator SSH key exists and get public key content
+        from tasks import ensure_orchestrator_ssh_key, fix_ssh_permissions
+        try:
+            orch_pub_key = ensure_orchestrator_ssh_key()
+            authorized_keys_path = "/root/.ssh/authorized_keys"
+            
+            # Append to authorized_keys of the borg-server if not present
+            if os.path.exists(authorized_keys_path):
+                with open(authorized_keys_path, "r") as f:
+                    auth_content = f.read()
+            else:
+                auth_content = ""
+                
+            if orch_pub_key not in auth_content:
+                command_restriction = (
+                    f'command="borg serve --restrict-to-path /data/borg/fleet",'
+                    f'no-port-forwarding,no-X11-forwarding,no-pty '
+                )
+                entry = f"{command_restriction}{orch_pub_key}\n"
+                with open(authorized_keys_path, "a") as f:
+                    f.write(entry)
+                fix_ssh_permissions()
+                logger.info("Orchestrator SSH public key appended to authorized_keys for kiosk access.")
+        except Exception as ke:
+            logger.error(f"Failed to setup SSH authorized_keys for kiosk: {ke}")
+
+        # Copy orchestrator private key to kiosk backend
+        shutil.copy2("/root/.ssh/id_ed25519", os.path.join(opt_offline, "backend", "id_ed25519"))
+        os.chmod(os.path.join(opt_offline, "backend", "id_ed25519"), 0o600)
+
         # 3. Create payload.img
         log_to_task(task_id, "[PROGRESS] 45:Packaging secondary initrd...")
         payload_img = os.path.join(iso_unpacked, "live", "payload.img")
@@ -247,10 +359,18 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                 content = f.read()
             
             lines = []
+            timeout_set = False
             for line in content.splitlines():
-                if line.strip().startswith("initrd") and "/live/initrd.img" in line and "payload.img" not in line:
+                if line.strip().startswith("set timeout="):
+                    line = "set timeout=5"
+                    timeout_set = True
+                elif line.strip().startswith("initrd") and "/live/initrd.img" in line and "payload.img" not in line:
                     line = line.rstrip() + " /live/payload.img"
                 lines.append(line)
+            
+            if not timeout_set:
+                lines.insert(0, "set timeout=5")
+                
             new_content = "\n".join(lines) + "\n"
             
             with open(grub_cfg, "w") as f:
@@ -269,19 +389,24 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                         if line.strip().startswith("#"):
                             lines.append(line)
                             continue
-                        if "initrd" in line and "/live/initrd.img" in line and "payload.img" not in line:
+                        
+                        parts = line.strip().split()
+                        if parts and parts[0].lower() == "timeout":
+                            indent = line[:line.find("timeout")]
+                            line = indent + "timeout 50"
+                        elif "initrd" in line and "/live/initrd.img" in line and "payload.img" not in line:
                             if "initrd=" in line:
-                                parts = line.split("initrd=", 1)
-                                val_parts = parts[1].split(maxsplit=1)
+                                parts_initrd = line.split("initrd=", 1)
+                                val_parts = parts_initrd[1].split(maxsplit=1)
                                 val = val_parts[0]
                                 rest = " " + val_parts[1] if len(val_parts) > 1 else ""
-                                line = parts[0] + "initrd=" + val + ",/live/payload.img" + rest
+                                line = parts_initrd[0] + "initrd=" + val + ",/live/payload.img" + rest
                             else:
-                                parts = line.split("initrd", 1)
-                                val_parts = parts[1].split(maxsplit=1)
+                                parts_initrd = line.split("initrd", 1)
+                                val_parts = parts_initrd[1].split(maxsplit=1)
                                 val = val_parts[0]
                                 rest = " " + val_parts[1] if len(val_parts) > 1 else ""
-                                line = parts[0] + "initrd" + val + ",/live/payload.img" + rest
+                                line = parts_initrd[0] + "initrd" + val + ",/live/payload.img" + rest
                         lines.append(line)
                     new_content = "\n".join(lines) + "\n"
                     

@@ -1,4 +1,20 @@
 #!/bin/bash
+# Mark the desktop shortcut as trusted to bypass XFCE's untrusted launcher warning
+DESKTOP_SHORTCUT="$HOME/Desktop/offline-kiosk.desktop"
+if [ -f "$DESKTOP_SHORTCUT" ]; then
+  chmod +x "$DESKTOP_SHORTCUT"
+  if command -v gio &>/dev/null; then
+    gio set -t string "$DESKTOP_SHORTCUT" metadata::xfce-exe-checksum "$(sha256sum "$DESKTOP_SHORTCUT" | awk '{print $1}')" &>/dev/null
+  fi
+fi
+
+# Disable screensaver and DPMS (screen turning off / going to sleep)
+if command -v xset &>/dev/null; then
+  xset s off      # disable screensaver
+  xset s noblank  # don't blank the video device
+  xset -dpms      # disable DPMS (Energy Star) features
+fi
+
 # Wait for backend to be ready
 logger -t offline-kiosk "Waiting for offline backend on port 8000..."
 for i in {1..30}; do

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
@@ -23,8 +23,24 @@ export default function App() {
   const [settings, setSettings] = useState<any>(null);
   const [savingIp, setSavingIp] = useState(false);
   const [appVersion, setAppVersion] = useState('');
+  const [isKiosk, setIsKiosk] = useState(false);
+  const [restoreMode, setRestoreMode] = useState<'offline' | 'online'>('offline');
 
   useEffect(() => {
+    if (!isKiosk) return;
+    fetch('/api/kiosk/mode')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.mode) {
+          setRestoreMode(data.mode);
+        }
+      })
+      .catch(err => console.error(err));
+  }, [isKiosk]);
+
+  useEffect(() => {
+    if (!isKiosk) return;
+
     const fetchNetStatus = async () => {
       try {
         const res = await fetch('/api/network/status');
@@ -39,7 +55,7 @@ export default function App() {
     fetchNetStatus();
     const interval = setInterval(fetchNetStatus, 7000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isKiosk]);
 
   useEffect(() => {
     // Fetch current app version from API
@@ -48,6 +64,10 @@ export default function App() {
       .then(data => {
         if (data && data.version) {
           setAppVersion(data.version);
+        }
+        if (data && data.is_kiosk) {
+          setIsKiosk(true);
+          setActiveTab('flasher');
         }
       })
       .catch(err => console.error('Error fetching version:', err));
@@ -71,6 +91,33 @@ export default function App() {
       })
       .catch(err => console.error(err));
   }, []);
+
+  const handleExitKiosk = async () => {
+    if (window.confirm("Are you sure you want to exit kiosk mode back to the desktop?")) {
+      try {
+        await fetch('/api/kiosk/exit', { method: 'POST' });
+      } catch (err) {
+        console.error("Failed to trigger kiosk exit:", err);
+      }
+    }
+  };
+
+  const handleToggleMode = async () => {
+    const nextMode = restoreMode === 'offline' ? 'online' : 'offline';
+    try {
+      const res = await fetch('/api/kiosk/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: nextMode })
+      });
+      if (res.ok) {
+        setRestoreMode(nextMode);
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleSaveIp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +151,7 @@ export default function App() {
     const tz = settings?.timezone || 'Browser Local';
     switch (activeTab) {
       case 'flasher':
-        return <FlasherTab onViewLogs={handleViewLogs} timezone={tz} />;
+        return <FlasherTab onViewLogs={handleViewLogs} timezone={tz} restoreMode={restoreMode} isKiosk={isKiosk} />;
       case 'clientiso':
         return <ClientIsoTab />;
       case 'history':
@@ -139,16 +186,18 @@ export default function App() {
 
           {/* Tab Navigation */}
           <nav className="flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800/60">
-            <button
-              onClick={() => setActiveTab('fleet')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'fleet'
-                  ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                  : 'text-zinc-400 hover:text-zinc-100'
-              }`}
-            >
-              <Server size={14} /> Fleet
-            </button>
+            {!isKiosk && (
+              <button
+                onClick={() => setActiveTab('fleet')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'fleet'
+                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                <Server size={14} /> Fleet
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('flasher')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -159,16 +208,18 @@ export default function App() {
             >
               <HardDrive size={14} /> Flasher
             </button>
-            <button
-              onClick={() => setActiveTab('clientiso')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'clientiso'
-                  ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                  : 'text-zinc-400 hover:text-zinc-100'
-              }`}
-            >
-              <Cpu size={14} /> Technician Kiosk
-            </button>
+            {!isKiosk && (
+              <button
+                onClick={() => setActiveTab('clientiso')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'clientiso'
+                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                <Cpu size={14} /> Technician Kiosk
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('history')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -189,40 +240,71 @@ export default function App() {
             >
               <Terminal size={14} /> Logs
             </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'settings'
-                  ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                  : 'text-zinc-400 hover:text-zinc-100'
-              }`}
-            >
-              <Gear size={14} /> Settings
-            </button>
+            {!isKiosk && (
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'settings'
+                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                <Gear size={14} /> Settings
+              </button>
+            )}
           </nav>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowNetworkModal(true)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
-            >
-              {networkStatus?.wired?.connected ? (
-                <>
-                  <Globe2 size={13} className="text-emerald-400" />
-                  <span>Wired Link</span>
-                </>
-              ) : networkStatus?.wifi?.connected ? (
-                <>
-                  <Wifi size={13} className="text-emerald-400" />
-                  <span>{networkStatus.wifi.ssid}</span>
-                </>
-              ) : (
-                <>
-                  <Globe2 size={13} className="text-rose-400" />
-                  <span className="text-rose-400 font-bold">Offline</span>
-                </>
-              )}
-            </button>
+            {isKiosk && (
+              <>
+                <button
+                  onClick={handleToggleMode}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
+                  title="Toggle restoration mode"
+                >
+                  {restoreMode === 'online' ? (
+                    <>
+                      <Globe2 size={13} className="text-indigo-400" />
+                      <span>Mode: Online (Network)</span>
+                    </>
+                  ) : (
+                    <>
+                      <HardDrive size={13} className="text-amber-400" />
+                      <span>Mode: Offline (USB Cache)</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowNetworkModal(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
+                >
+                  {networkStatus?.wired?.connected ? (
+                    <>
+                      <Globe2 size={13} className="text-emerald-400" />
+                      <span>Wired Link</span>
+                    </>
+                  ) : networkStatus?.wifi?.connected ? (
+                    <>
+                      <Wifi size={13} className="text-emerald-400" />
+                      <span>{networkStatus.wifi.ssid}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Globe2 size={13} className="text-rose-400" />
+                      <span className="text-rose-400 font-bold">Offline</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleExitKiosk}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 hover:border-red-900/60 text-xs text-red-400 font-bold transition-all duration-200 cursor-pointer"
+                  title="Exit Kiosk Mode"
+                >
+                  <LogOut size={13} />
+                  <span>Exit Kiosk</span>
+                </button>
+              </>
+            )}
             <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider animate-pulse-subtle">
               System Online
             </span>

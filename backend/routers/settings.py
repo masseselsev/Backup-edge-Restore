@@ -12,7 +12,7 @@ def get_version():
     """
     Returns the current application version.
     """
-    return {"version": VERSION}
+    return {"version": VERSION, "is_kiosk": False}
 
 
 @router.get("/settings", response_model=schemas.SettingsResponse)

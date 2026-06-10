@@ -161,6 +161,13 @@ def format_and_restore(
         env = os.environ.copy()
         env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
+        if repo_path.startswith("ssh://"):
+            kiosk_key = "/opt/offline-client/backend/id_ed25519"
+            host_key = "/root/.ssh/id_ed25519"
+            key_path = kiosk_key if os.path.exists(kiosk_key) else host_key
+            if os.path.exists(key_path):
+                env["BORG_RSH"] = f"ssh -i {key_path} -o StrictHostKeyChecking=no"
+
         extract_cmd = [
             "borg", "extract", "--numeric-ids", "--sparse", "--progress",
             f"{repo_path}::{archive_name}"

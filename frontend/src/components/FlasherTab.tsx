@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertTriangle, Server, HardDrive, RefreshCw, Play } from 'lucide-react';
+import { AlertTriangle, Server, HardDrive, RefreshCw, Play, Download } from 'lucide-react';
 
 interface Device {
   name: string;
@@ -33,9 +33,11 @@ import type { Option } from './SearchableSelect';
 interface FlasherTabProps {
   onViewLogs: (taskId: string, title: string) => void;
   timezone?: string;
+  restoreMode?: 'offline' | 'online';
+  isKiosk?: boolean;
 }
 
-export default function FlasherTab({ onViewLogs, timezone }: FlasherTabProps) {
+export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offline', isKiosk = false }: FlasherTabProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [nodes, setNodes] = useState<EdgeNode[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<number | ''>('');
@@ -52,6 +54,67 @@ export default function FlasherTab({ onViewLogs, timezone }: FlasherTabProps) {
   const [wipeMacBindings, setWipeMacBindings] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Sync states
+  const [syncing, setSyncing] = useState(false);
+  const [syncTaskId, setSyncTaskId] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState(0);
+
+  const handleSyncToUsb = async () => {
+    if (!selectedNodeId) return;
+    const node = nodes.find(n => n.id === selectedNodeId);
+    if (!node) return;
+    
+    setSyncing(true);
+    setSyncProgress(0);
+    try {
+      const res = await fetch(`/api/kiosk/sync/${node.hostname}`, { method: 'POST' });
+      if (!res.ok) throw new Error("Failed to start sync");
+      const data = await res.json();
+      if (data.task_id) {
+        setSyncTaskId(data.task_id);
+      }
+    } catch (err: any) {
+      alert(`Sync failed to start: ${err.message}`);
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!syncTaskId) return;
+
+    let intervalId: any = null;
+    const pollStatus = async () => {
+      try {
+        const res = await fetch(`/api/tasks/${syncTaskId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.progress) {
+          setSyncProgress(data.progress);
+        }
+        if (data.status === 'SUCCESS') {
+          clearInterval(intervalId);
+          setSyncTaskId(null);
+          setSyncing(false);
+          alert("Repository synced to USB successfully!");
+          // Refresh lists to see cached nodes
+          fetchDevices();
+          fetchNodes();
+        } else if (data.status === 'FAILED') {
+          clearInterval(intervalId);
+          setSyncTaskId(null);
+          setSyncing(false);
+          alert(`Sync task failed. Please check kiosk logs.`);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    pollStatus();
+    intervalId = setInterval(pollStatus, 2000);
+    return () => clearInterval(intervalId);
+  }, [syncTaskId]);
 
   const fetchDevices = async () => {
     setScanning(true);
@@ -216,6 +279,40 @@ export default function FlasherTab({ onViewLogs, timezone }: FlasherTabProps) {
                 </div>
               )}
             </div>
+
+            {selectedNodeId && isKiosk && restoreMode === 'online' && (
+              <div className="p-4 bg-indigo-950/20 border border-indigo-900/30 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Local USB Cache (Offline Restore Prep)</h4>
+                    <p className="text-[10px] text-zinc-400 mt-1">Download this node's full repository to the USB drive to allow restoring without internet.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSyncToUsb}
+                    disabled={syncing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    <Download size={13} />
+                    {syncing ? 'Syncing...' : 'Sync to USB'}
+                  </button>
+                </div>
+                {syncing && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                      <span>Syncing files...</span>
+                      <span>{syncProgress}%</span>
+                    </div>
+                    <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden border border-zinc-800">
+                      <div 
+                        className="bg-indigo-500 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${syncProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {selectedNodeId && (
               <div>

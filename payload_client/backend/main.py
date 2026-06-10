@@ -22,6 +22,29 @@ except ImportError:
 
 app = FastAPI(title="Offline Technician Client", version=VERSION)
 
+import urllib.request
+import urllib.error
+
+# Load Kiosk configuration if present
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+orchestrator_ip = "127.0.0.1"
+orchestrator_api_port = 8000
+orchestrator_ssh_port = 12345
+auth_token = ""
+
+if os.path.exists(CONFIG_PATH):
+    try:
+        with open(CONFIG_PATH, "r") as f:
+            cfg = json.load(f)
+            orchestrator_ip = cfg.get("orchestrator_ip", "127.0.0.1")
+            orchestrator_api_port = cfg.get("orchestrator_api_port", 8000)
+            orchestrator_ssh_port = cfg.get("orchestrator_ssh_port", 12345)
+            auth_token = cfg.get("auth_token", "")
+    except Exception as e:
+        logging.error(f"Failed to load config.json: {e}")
+
+restore_mode = "offline"
+
 # Try to register the shared network configurations router if available
 try:
     from routers.network import router as network_router
@@ -45,7 +68,7 @@ class RestoreRequest(BaseModel):
 def run_offline_restore(task_id: str, req: RestoreRequest):
     task_status[task_id] = "RUNNING"
     task_progress[task_id] = 0
-    task_logs[task_id] = f"Starting offline restore for archive {req.archive_name} to {req.target_dev}\n"
+    task_logs[task_id] = f"Starting bare-metal restore for archive {req.archive_name} to {req.target_dev}\n"
 
     def log_callback(msg: str, prog: Optional[int] = None, status: Optional[str] = None):
         if prog is not None:
@@ -56,25 +79,70 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
         if status:
             task_status[task_id] = status
 
-    # In a real offline scenario, we don't have the node DB, so we use a default layout
-    partitions = [
-        {"name": "ESP", "mount": "/boot/efi", "fstype": "vfat", "label": "EFI", "uuid": "458C-37BB", "size_bytes": 512 * 1024 * 1024},
-        {"name": "boot", "mount": "/boot", "fstype": "ext2", "label": "edgeboot", "uuid": "", "size_bytes": 1024 * 1024 * 1024},
-        {"name": "root", "mount": "/", "fstype": "ext4", "label": "edgeroot", "uuid": "", "size_bytes": 30 * 1024 * 1024 * 1024},
-        {"name": "log", "mount": "/var/log/edge", "fstype": "ext4", "label": "edgelog", "uuid": "", "size_bytes": 5 * 1024 * 1024 * 1024},
-        {"name": "storage", "mount": "/var/opt/edge", "fstype": "ext4", "label": "edgestor", "uuid": "", "size_bytes": 0}
-    ]
+    hostname = None
+    partitions = None
+    efi_uuid = "458C-37BB"
+    
+    global restore_mode
+    if restore_mode == "online":
+        try:
+            task_logs[task_id] += "Fetching node configuration from orchestrator...\n"
+            nodes_req = urllib.request.Request(
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
+                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            )
+            with urllib.request.urlopen(nodes_req, timeout=5) as response:
+                nodes_data = json.loads(response.read().decode())
+            for n in nodes_data:
+                if n["id"] == req.node_id:
+                    hostname = n["hostname"]
+                    partitions = n.get("partition_layout")
+                    efi_uuid = n.get("efi_uuid") or efi_uuid
+                    break
+        except Exception as e:
+            task_logs[task_id] += f"WARNING: Failed to fetch partition layout from orchestrator: {e}. Falling back to default layout.\n"
+    else:
+        nodes = get_kiosk_nodes()
+        for n in nodes:
+            if n["id"] == req.node_id:
+                hostname = n["hostname"].split(" (")[0]
+                break
+        if hostname:
+            layout_path = f"/media/usb-data/borg/fleet/{hostname}/partition_layout.json"
+            if os.path.exists(layout_path):
+                try:
+                    with open(layout_path, "r") as f:
+                        layout_data = json.load(f)
+                        partitions = layout_data.get("partition_layout")
+                        efi_uuid = layout_data.get("efi_uuid") or efi_uuid
+                except Exception as e:
+                    task_logs[task_id] += f"WARNING: Failed to load cached partition layout: {e}\n"
+
+    if not hostname:
+        task_status[task_id] = "FAILED"
+        task_logs[task_id] += "ERROR: Selected node not found.\n"
+        return
+
+    if not partitions:
+        task_logs[task_id] += "Using default fallback partition layout.\n"
+        partitions = [
+            {"name": "ESP", "mount": "/boot/efi", "fstype": "vfat", "label": "EFI", "uuid": "458C-37BB", "size_bytes": 512 * 1024 * 1024},
+            {"name": "boot", "mount": "/boot", "fstype": "ext2", "label": "edgeboot", "uuid": "", "size_bytes": 1024 * 1024 * 1024},
+            {"name": "root", "mount": "/", "fstype": "ext4", "label": "edgeroot", "uuid": "", "size_bytes": 30 * 1024 * 1024 * 1024},
+            {"name": "log", "mount": "/var/log/edge", "fstype": "ext4", "label": "edgelog", "uuid": "", "size_bytes": 5 * 1024 * 1024 * 1024},
+            {"name": "storage", "mount": "/var/opt/edge", "fstype": "ext4", "label": "edgestor", "uuid": "", "size_bytes": 0}
+        ]
+
+    if restore_mode == "online":
+        repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet/{hostname}"
+    else:
+        repo_path = f"/media/usb-data/borg/fleet/{hostname}"
 
     try:
-        # Assuming the persistent USB partition is mounted at /media/usb-data
-        # We will create a sync endpoint to download repos there.
-        repo_path = "/media/usb-data/borg/fleet"
-        
-        # We can't query total files easily without DB, pass 0 to disable accurate estimation
         format_and_restore(
             target_dev=req.target_dev,
             partitions=partitions,
-            efi_uuid="458C-37BB",
+            efi_uuid=efi_uuid,
             archive_name=req.archive_name,
             repo_path=repo_path,
             keep_network_configs=req.keep_network_configs,
@@ -89,7 +157,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
 @app.get("/api/version")
 def get_version():
     """Returns the unified application version."""
-    return {"version": VERSION}
+    return {"version": VERSION, "is_kiosk": True}
 
 @app.get("/api/scanner/devices")
 def scan_devices():
@@ -121,15 +189,48 @@ def scan_devices():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/nodes")
-def get_mock_node():
-    return [{
-        "id": 1,
-        "hostname": "Offline Mode (Local Cache)",
-        "ip_address": "127.0.0.1",
-        "disk_type": "UNKNOWN",
-        "efi_uuid": "458C-37BB",
-        "last_backup": "Available"
-    }]
+def get_kiosk_nodes():
+    global restore_mode
+    if restore_mode == "online":
+        try:
+            req = urllib.request.Request(
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
+                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return json.loads(response.read().decode())
+        except Exception as e:
+            logging.error(f"Failed to fetch nodes from orchestrator: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
+    else:
+        # Scan /media/usb-data/borg/fleet for cached directories
+        nodes = []
+        base_path = "/media/usb-data/borg/fleet"
+        if os.path.exists(base_path):
+            try:
+                for entry in os.listdir(base_path):
+                    if os.path.isdir(os.path.join(base_path, entry)) and not entry.startswith("."):
+                        nodes.append({
+                            "id": len(nodes) + 1,
+                            "hostname": f"{entry} (Local Cache)",
+                            "ip_address": "127.0.0.1",
+                            "disk_type": "UNKNOWN",
+                            "efi_uuid": "458C-37BB",
+                            "last_backup": "Available"
+                        })
+            except Exception as e:
+                logging.error(f"Error scanning local USB cache: {e}")
+                
+        if not nodes:
+            nodes.append({
+                "id": 1,
+                "hostname": "Offline Mode (No local cache found)",
+                "ip_address": "127.0.0.1",
+                "disk_type": "UNKNOWN",
+                "efi_uuid": "458C-37BB",
+                "last_backup": "None"
+            })
+        return nodes
 
 @app.get("/api/stats")
 def get_mock_stats():
@@ -166,8 +267,31 @@ def get_all_history():
 
 @app.get("/api/nodes/{node_id}/history")
 def get_local_history(node_id: int):
-    # Scan the local /media/usb-data/borg/fleet repo using borg list
-    repo_path = "/media/usb-data/borg/fleet"
+    global restore_mode
+    if restore_mode == "online":
+        try:
+            req = urllib.request.Request(
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes/{node_id}/history",
+                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return json.loads(response.read().decode())
+        except Exception as e:
+            logging.error(f"Failed to fetch history from orchestrator: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
+            
+    # For offline cache, scan local borg repo of the corresponding node
+    nodes = get_kiosk_nodes()
+    hostname = None
+    for n in nodes:
+        if n["id"] == node_id:
+            hostname = n["hostname"].split(" (")[0]
+            break
+            
+    if not hostname or "No local cache" in hostname:
+        return []
+        
+    repo_path = f"/media/usb-data/borg/fleet/{hostname}"
     if not os.path.exists(repo_path):
         return []
     
@@ -200,6 +324,16 @@ def trigger_restore(req: RestoreRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_offline_restore, task_id, req)
     return {"task_id": task_id}
 
+@app.post("/api/kiosk/exit")
+def exit_kiosk():
+    """Kills the web browser running in kiosk mode to exit back to desktop."""
+    try:
+        # Kill chromium, chromium-browser, firefox, firefox-esr
+        subprocess.run("pkill -f 'chromium|firefox'", shell=True)
+        return {"status": "SUCCESS", "message": "Kiosk exited."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/tasks/{task_id}")
 def get_task_status(task_id: str):
     if task_id not in task_status:
@@ -210,6 +344,104 @@ def get_task_status(task_id: str):
         "progress": task_progress.get(task_id, 0),
         "logs": task_logs.get(task_id, "")
     }
+
+def run_kiosk_sync(task_id: str, hostname: str):
+    task_status[task_id] = "RUNNING"
+    task_progress[task_id] = 0
+    task_logs[task_id] = f"Starting USB Cache Sync for node {hostname} from http://{orchestrator_ip}:{orchestrator_api_port}\n"
+
+    try:
+        # Step A: Cache partition layout from orchestrator
+        try:
+            nodes_req = urllib.request.Request(
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
+                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            )
+            with urllib.request.urlopen(nodes_req, timeout=5) as response:
+                nodes_data = json.loads(response.read().decode())
+            for n in nodes_data:
+                if n["hostname"] == hostname:
+                    layout_dir = f"/media/usb-data/borg/fleet/{hostname}"
+                    os.makedirs(layout_dir, exist_ok=True)
+                    layout_path = os.path.join(layout_dir, "partition_layout.json")
+                    with open(layout_path, "w") as lf:
+                        json.dump({
+                            "partition_layout": n.get("partition_layout"),
+                            "efi_uuid": n.get("efi_uuid")
+                        }, lf)
+                    task_logs[task_id] += "Successfully cached partition layout configuration.\n"
+                    break
+        except Exception as e:
+            task_logs[task_id] += f"WARNING: Failed to fetch and cache partition layout: {e}\n"
+
+        # Step B: Download tar stream
+        url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/iso/repos/{hostname}/download?token={auth_token}"
+        task_logs[task_id] += f"Connecting to download stream: {url}\n"
+        
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as response:
+            total_size_header = response.headers.get("X-Total-Size")
+            total_size = int(total_size_header) if total_size_header else 0
+            task_logs[task_id] += f"Total repository size: {total_size} bytes\n"
+
+            target_dir = f"/media/usb-data/borg/fleet/{hostname}"
+            os.makedirs(target_dir, exist_ok=True)
+
+            tar_proc = subprocess.Popen(
+                ["tar", "-xf", "-", "-C", "/media/usb-data/borg/fleet/"],
+                stdin=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+
+            bytes_downloaded = 0
+            last_reported_pct = -1
+            
+            while True:
+                chunk = response.read(65536)
+                if not chunk:
+                    break
+                bytes_downloaded += len(chunk)
+                tar_proc.stdin.write(chunk)
+
+                if total_size > 0:
+                    pct = int((bytes_downloaded / total_size) * 100)
+                    if pct != last_reported_pct:
+                        task_progress[task_id] = pct
+                        last_reported_pct = pct
+
+            tar_proc.stdin.close()
+            tar_err = tar_proc.stderr.read().decode()
+            tar_proc.wait()
+
+            if tar_proc.returncode != 0:
+                raise Exception(f"tar extraction failed (code {tar_proc.returncode}): {tar_err}")
+
+        task_logs[task_id] += f"Repository sync completed successfully! Total bytes: {bytes_downloaded}\n"
+        task_status[task_id] = "SUCCESS"
+        task_progress[task_id] = 100
+    except Exception as e:
+        task_logs[task_id] += f"FATAL ERROR during sync: {str(e)}\n"
+        task_status[task_id] = "FAILED"
+
+@app.get("/api/kiosk/mode")
+def get_kiosk_mode():
+    return {"mode": restore_mode}
+
+@app.post("/api/kiosk/mode")
+def set_kiosk_mode(req: dict):
+    global restore_mode
+    mode = req.get("mode")
+    if mode not in ("offline", "online"):
+        raise HTTPException(status_code=400, detail="Invalid mode")
+    restore_mode = mode
+    return {"status": "SUCCESS", "mode": restore_mode}
+
+@app.post("/api/kiosk/sync/{hostname}")
+def trigger_kiosk_sync(hostname: str, background_tasks: BackgroundTasks):
+    import uuid
+    task_id = f"task-{uuid.uuid4().hex[:8]}"
+    background_tasks.add_task(run_kiosk_sync, task_id, hostname)
+    return {"task_id": task_id}
 
 # Fallback to serve the React frontend built for the offline client
 if os.path.exists("frontend_build"):
