@@ -467,7 +467,7 @@ def get_kiosk_storage():
             "used": used,
             "free": free,
             "path": path,
-            "is_mounted": path == "/media/usb-data"
+            "is_mounted": path == "/media/usb-data" and os.path.ismount(path)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
