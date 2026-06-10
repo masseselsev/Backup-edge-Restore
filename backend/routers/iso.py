@@ -1,4 +1,7 @@
 import os
+import json
+import time
+import redis
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -7,6 +10,9 @@ from typing import Dict, Any, Optional
 from iso_tasks import generate_client_iso_task, download_base_iso_task, CACHE_DIR
 from models import TaskLog
 from database import SessionLocal
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+redis_client = redis.Redis.from_url(REDIS_URL)
 
 router = APIRouter()
 
@@ -109,6 +115,7 @@ def get_iso_status():
     client_exists = os.path.exists(os.path.join(CACHE_DIR, "technician_client_v1.iso"))
     
     progress = -1
+    speed_str = ""
     if not base_exists and os.path.exists(lock_path):
         progress = 0
         if os.path.exists(tmp_path):
@@ -122,10 +129,47 @@ def get_iso_status():
                 except:
                     pass
             progress = min(100, int((size / total_size) * 100))
+            
+            # Speed calculation logic using Redis state
+            try:
+                current_time = time.time()
+                last_data_raw = redis_client.get("base_iso_download_last")
+                if last_data_raw:
+                    last_data = json.loads(last_data_raw)
+                    last_size = last_data.get("size", 0)
+                    last_time = last_data.get("time", 0.0)
+                    
+                    time_diff = current_time - last_time
+                    if time_diff >= 0.5:
+                        size_diff = size - last_size
+                        if size_diff >= 0:
+                            speed_bps = size_diff / time_diff
+                            if speed_bps >= 1024 * 1024:
+                                speed_str = f"{speed_bps / (1024 * 1024):.1f} MB/s"
+                            elif speed_bps >= 1024:
+                                speed_str = f"{speed_bps / 1024:.1f} KB/s"
+                            else:
+                                speed_str = f"{speed_bps:.0f} B/s"
+                            
+                            redis_client.setex("base_iso_download_speed", 10, speed_str)
+                            redis_client.setex("base_iso_download_last", 60, json.dumps({"size": size, "time": current_time}))
+                else:
+                    redis_client.setex("base_iso_download_last", 60, json.dumps({"size": size, "time": current_time}))
+            except Exception:
+                pass
+                
+        if not speed_str:
+            try:
+                cached_speed = redis_client.get("base_iso_download_speed")
+                if cached_speed:
+                    speed_str = cached_speed.decode('utf-8')
+            except:
+                pass
         
     return {
         "base_iso_cached": base_exists or client_exists,
         "base_iso_progress": progress,
+        "base_iso_speed": speed_str,
         "client_iso_ready": client_exists
     }
 

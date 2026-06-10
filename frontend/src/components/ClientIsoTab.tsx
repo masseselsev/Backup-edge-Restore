@@ -6,6 +6,7 @@ interface IsoStatus {
   base_iso_cached: boolean;
   client_iso_ready: boolean;
   base_iso_progress?: number;
+  base_iso_speed?: string;
 }
 
 export default function ClientIsoTab() {
@@ -331,7 +332,10 @@ export default function ClientIsoTab() {
                       <div className="mt-2 w-full">
                         <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
                           <span className="text-zinc-400">
-                            {status.base_iso_progress === 100 ? 'Validating...' : 'Downloading...'}
+                            {status.base_iso_progress === 100
+                              ? 'Validating...'
+                              : `Downloading... ${status.base_iso_speed ? `(${status.base_iso_speed})` : ''}`
+                            }
                           </span>
                           <span className="text-sky-400">{status.base_iso_progress}%</span>
                         </div>
