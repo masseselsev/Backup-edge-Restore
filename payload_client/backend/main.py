@@ -14,7 +14,20 @@ try:
 except ImportError:
     pass # Will be resolved at ISO runtime
 
-app = FastAPI(title="Offline Technician Client")
+# Centralized version logic
+try:
+    from version import VERSION
+except ImportError:
+    VERSION = "v0.5beta"
+
+app = FastAPI(title="Offline Technician Client", version=VERSION)
+
+# Try to register the shared network configurations router if available
+try:
+    from routers.network import router as network_router
+    app.include_router(network_router, prefix="/api")
+except ImportError:
+    pass
 
 # Local state to track task progress
 task_logs: Dict[str, str] = {}
@@ -32,14 +45,14 @@ class RestoreRequest(BaseModel):
 def run_offline_restore(task_id: str, req: RestoreRequest):
     task_status[task_id] = "RUNNING"
     task_progress[task_id] = 0
-    task_logs[task_id] = f"Starting offline restore for archive {req.archive_name} to {req.target_dev}\\n"
+    task_logs[task_id] = f"Starting offline restore for archive {req.archive_name} to {req.target_dev}\n"
 
     def log_callback(msg: str, prog: Optional[int] = None, status: Optional[str] = None):
         if prog is not None:
             task_progress[task_id] = prog
-            task_logs[task_id] += f"[PROGRESS] {prog}:{msg}\\n"
+            task_logs[task_id] += f"[PROGRESS] {prog}:{msg}\n"
         else:
-            task_logs[task_id] += f"{msg}\\n"
+            task_logs[task_id] += f"{msg}\n"
         if status:
             task_status[task_id] = status
 
@@ -73,6 +86,11 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
     except Exception as e:
         log_callback(f"FATAL EXCEPTION: {str(e)}", status="FAILED")
 
+@app.get("/api/version")
+def get_version():
+    """Returns the unified application version."""
+    return {"version": VERSION}
+
 @app.get("/api/scanner/devices")
 def scan_devices():
     try:
@@ -83,7 +101,6 @@ def scan_devices():
             if not bd.get("name").startswith("loop") and not bd.get("name").startswith("sr"):
                 is_usb = bd.get("tran") == "usb"
                 # Exclude the USB drive we booted from if possible.
-                # A simple heuristic: if it's the live USB, it usually has an iso9660 partition or mounted at /run/live
                 try:
                     mounts = subprocess.check_output(f"lsblk -J -o MOUNTPOINT /dev/{bd['name']}", shell=True, text=True)
                     if "live" in mounts.lower():
@@ -108,10 +125,44 @@ def get_mock_node():
     return [{
         "id": 1,
         "hostname": "Offline Mode (Local Cache)",
+        "ip_address": "127.0.0.1",
         "disk_type": "UNKNOWN",
         "efi_uuid": "458C-37BB",
         "last_backup": "Available"
     }]
+
+@app.get("/api/stats")
+def get_mock_stats():
+    repo_path = "/media/usb-data/borg/fleet"
+    total_original = 0
+    total_dedup = 0
+    
+    if os.path.exists(repo_path):
+        env = os.environ.copy()
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+        try:
+            out = subprocess.check_output(["borg", "info", "--json", repo_path], env=env, text=True)
+            data = json.loads(out)
+            cache_stats = data.get("cache", {}).get("stats", {})
+            total_original = cache_stats.get("total_size", 0)
+            total_dedup = cache_stats.get("total_csize", 0)
+        except Exception:
+            pass
+
+    ratio = 1.0
+    if total_dedup > 0:
+        ratio = round(total_original / total_dedup, 2)
+
+    return {
+        "total_nodes": 1,
+        "total_original_size_bytes": total_original,
+        "total_deduplicated_size_bytes": total_dedup,
+        "deduplication_ratio": ratio
+    }
+
+@app.get("/api/nodes/history")
+def get_all_history():
+    return get_local_history(node_id=1)
 
 @app.get("/api/nodes/{node_id}/history")
 def get_local_history(node_id: int):
@@ -130,9 +181,11 @@ def get_local_history(node_id: int):
         for i, a in enumerate(archives):
             snapshots.append({
                 "id": i,
+                "node_id": node_id,
                 "archive_name": a["name"],
                 "timestamp": a["start"],
-                "original_size": 0, # Borg list doesn't provide original size without info command
+                "original_size": a.get("stats", {}).get("original_size", 0),
+                "deduplicated_size": a.get("stats", {}).get("deduplicated_size", 0),
                 "comment": a.get("comment", ""),
                 "status": "SUCCESS"
             })

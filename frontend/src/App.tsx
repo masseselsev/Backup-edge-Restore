@@ -22,7 +22,7 @@ export default function App() {
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [settings, setSettings] = useState<any>(null);
   const [savingIp, setSavingIp] = useState(false);
-  const [appVersion, setAppVersion] = useState('v0.4beta');
+  const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
     const fetchNetStatus = async () => {

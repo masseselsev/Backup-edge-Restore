@@ -138,6 +138,15 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # Inject Shared Disk Ops Module
         shutil.copy2("/app/core/disk_ops.py", os.path.join(opt_offline, "backend", "core", "disk_ops.py"))
 
+        # Inject Shared Network settings router
+        os.makedirs(os.path.join(opt_offline, "backend", "routers"), exist_ok=True)
+        with open(os.path.join(opt_offline, "backend", "routers", "__init__.py"), "w") as f:
+            pass
+        shutil.copy2("/app/routers/network.py", os.path.join(opt_offline, "backend", "routers", "network.py"))
+
+        # Inject Unified version configuration
+        shutil.copy2("/app/version.py", os.path.join(opt_offline, "backend", "version.py"))
+
         # Inject Frontend Build (mapped via named volume to /opt/frontend_build)
         if os.path.exists("/opt/frontend_build"):
             shutil.copytree("/opt/frontend_build", os.path.join(opt_offline, "backend", "frontend_build"))
@@ -172,6 +181,13 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         kiosk_src = "/payload_client/systemd/offline-kiosk.desktop"
         kiosk_dst = os.path.join(payload_dir, "etc", "xdg", "autostart", "offline-kiosk.desktop")
         shutil.copy2(kiosk_src, kiosk_dst)
+
+        # Inject Kiosk Desktop Shortcut on User Desktop template
+        desktop_dir = os.path.join(payload_dir, "etc", "skel", "Desktop")
+        os.makedirs(desktop_dir, exist_ok=True)
+        desktop_dst = os.path.join(desktop_dir, "offline-kiosk.desktop")
+        shutil.copy2(kiosk_src, desktop_dst)
+        os.chmod(desktop_dst, 0o755)
 
         # Inject Init-bottom Copy Script to persist payload files across switch_root
         init_bottom_dir = os.path.join(payload_dir, "scripts", "init-bottom")
