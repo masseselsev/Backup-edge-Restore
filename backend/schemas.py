@@ -39,6 +39,7 @@ class NodeResponse(BaseModel):
     partition_layout: Optional[List[dict]] = None
     os_version: Optional[str] = None
     next_retry_at: Optional[datetime] = None
+    repo_size_bytes: Optional[int] = None
 
     class Config:
         from_attributes = True

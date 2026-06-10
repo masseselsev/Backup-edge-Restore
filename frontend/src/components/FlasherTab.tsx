@@ -16,6 +16,7 @@ interface EdgeNode {
   disk_type: string;
   efi_uuid: string | null;
   last_backup: string | null;
+  repo_size_bytes?: number;
 }
 
 interface Snapshot {
@@ -60,6 +61,15 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const [syncTaskId, setSyncTaskId] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState(0);
 
+  // Storage partition capacity state
+  const [storageInfo, setStorageInfo] = useState<{
+    total: number;
+    used: number;
+    free: number;
+    path: string;
+    is_mounted: boolean;
+  } | null>(null);
+
   const handleSyncToUsb = async () => {
     if (!selectedNodeId) return;
     const node = nodes.find(n => n.id === selectedNodeId);
@@ -100,6 +110,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
           // Refresh lists to see cached nodes
           fetchDevices();
           fetchNodes();
+          fetchStorageInfo();
         } else if (data.status === 'FAILED') {
           clearInterval(intervalId);
           setSyncTaskId(null);
@@ -141,6 +152,19 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     }
   };
 
+  const fetchStorageInfo = async () => {
+    if (!isKiosk) return;
+    try {
+      const res = await fetch('/api/kiosk/storage');
+      if (res.ok) {
+        const data = await res.json();
+        setStorageInfo(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const fetchSnapshots = async (nodeId: number) => {
     setLoadingSnapshots(true);
     try {
@@ -157,7 +181,10 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   useEffect(() => {
     fetchDevices();
     fetchNodes();
-  }, []);
+    if (isKiosk) {
+      fetchStorageInfo();
+    }
+  }, [isKiosk]);
 
   useEffect(() => {
     if (selectedNodeId) {
@@ -235,7 +262,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     .map(n => ({
       value: n.id,
       label: n.hostname,
-      sublabel: `Original Disk: ${n.disk_type}${n.efi_uuid ? '' : ' [NO EFI UUID]'}`,
+      sublabel: `Original Disk: ${n.disk_type}${n.efi_uuid ? '' : ' [NO EFI UUID]'}${n.repo_size_bytes !== undefined ? ` — Repo Size: ${getFormatSize(n.repo_size_bytes)}` : ''}`,
       disabled: false
     }));
 
@@ -285,7 +312,15 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Local USB Cache (Offline Restore Prep)</h4>
-                    <p className="text-[10px] text-zinc-400 mt-1">Download this node's full repository to the USB drive to allow restoring without internet.</p>
+                    <p className="text-[10px] text-zinc-400 mt-1">
+                      Download this node's full repository {selectedNode?.repo_size_bytes !== undefined ? `(${getFormatSize(selectedNode.repo_size_bytes)})` : ''} to the USB drive to allow restoring without internet.
+                    </p>
+                    {storageInfo && (
+                      <p className="text-[10px] text-zinc-500 mt-1.5 flex items-center gap-1.5 font-semibold">
+                        <HardDrive size={11} className="text-zinc-400" />
+                        Storage space: <span className="text-emerald-400">{getFormatSize(storageInfo.free)} free</span> / {getFormatSize(storageInfo.total)} total
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -457,6 +492,65 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
             )}
           </div>
         </div>
+
+        {isKiosk && storageInfo && (
+          <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 animate-fade-in">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <HardDrive size={16} className="text-indigo-400" />
+                Local Backup Storage
+              </h3>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                storageInfo.is_mounted 
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              }`}>
+                {storageInfo.is_mounted ? 'USB Mount' : 'Fallback (/)'}
+              </span>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between text-xs text-zinc-400">
+                <span>Mount Path</span>
+                <span className="font-mono text-zinc-300 text-right max-w-[150px] truncate" title={storageInfo.path}>
+                  {storageInfo.path}
+                </span>
+              </div>
+              
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-semibold">
+                  <span className="text-zinc-400">Used Space ({getFormatSize(storageInfo.used)})</span>
+                  <span className="text-white">
+                    {((storageInfo.used / storageInfo.total) * 100).toFixed(0)}%
+                  </span>
+                </div>
+                
+                <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-800/80 p-[1px]">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      (storageInfo.free / storageInfo.total) < 0.1 
+                        ? 'bg-rose-500' 
+                        : (storageInfo.free / storageInfo.total) < 0.25 
+                          ? 'bg-amber-500' 
+                          : 'bg-indigo-500'
+                    }`}
+                    style={{ width: `${(storageInfo.used / storageInfo.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-zinc-400">Free Space</span>
+                <span className="text-emerald-400">{getFormatSize(storageInfo.free)}</span>
+              </div>
+              
+              <div className="flex justify-between text-xs">
+                <span className="text-zinc-400">Total Capacity</span>
+                <span className="text-zinc-300 font-semibold">{getFormatSize(storageInfo.total)}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

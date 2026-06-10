@@ -218,13 +218,23 @@ def get_kiosk_nodes():
             try:
                 for entry in os.listdir(base_path):
                     if os.path.isdir(os.path.join(base_path, entry)) and not entry.startswith("."):
+                        node_path = os.path.join(base_path, entry)
+                        repo_size = 0
+                        try:
+                            for root, dirs, files in os.walk(node_path):
+                                for file in files:
+                                    repo_size += os.path.getsize(os.path.join(root, file))
+                        except Exception:
+                            repo_size = 0
+
                         nodes.append({
                             "id": len(nodes) + 1,
                             "hostname": f"{entry} (Local Cache)",
                             "ip_address": "127.0.0.1",
                             "disk_type": "UNKNOWN",
                             "efi_uuid": "458C-37BB",
-                            "last_backup": "Available"
+                            "last_backup": "Available",
+                            "repo_size_bytes": repo_size
                         })
             except Exception as e:
                 logging.error(f"Error scanning local USB cache: {e}")
@@ -443,6 +453,24 @@ def set_kiosk_mode(req: dict):
         raise HTTPException(status_code=400, detail="Invalid mode")
     restore_mode = mode
     return {"status": "SUCCESS", "mode": restore_mode}
+
+@app.get("/api/kiosk/storage")
+def get_kiosk_storage():
+    import shutil
+    path = "/media/usb-data"
+    if not os.path.exists(path):
+        path = "/"
+    try:
+        total, used, free = shutil.disk_usage(path)
+        return {
+            "total": total,
+            "used": used,
+            "free": free,
+            "path": path,
+            "is_mounted": path == "/media/usb-data"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/kiosk/sync/{hostname}")
 def trigger_kiosk_sync(hostname: str, background_tasks: BackgroundTasks):

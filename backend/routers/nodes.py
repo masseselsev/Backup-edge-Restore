@@ -71,6 +71,18 @@ def get_nodes(db: Session = Depends(get_db)):
     nodes = db.query(models.Node).all()
     results = []
     for node in nodes:
+        # Calculate repository size on disk
+        repo_size = None
+        repo_dir = f"/data/borg/fleet/{node.hostname}"
+        if os.path.exists(repo_dir):
+            try:
+                repo_size = 0
+                for root, dirs, files in os.walk(repo_dir):
+                    for file in files:
+                        repo_size += os.path.getsize(os.path.join(root, file))
+            except Exception:
+                repo_size = None
+
         node_dict = {
             "id": node.id,
             "hostname": node.hostname,
@@ -83,7 +95,8 @@ def get_nodes(db: Session = Depends(get_db)):
             "efi_uuid": node.efi_uuid,
             "partition_layout": node.partition_layout,
             "os_version": node.os_version,
-            "next_retry_at": None
+            "next_retry_at": None,
+            "repo_size_bytes": repo_size
         }
         if node.status == "OFFLINE":
             try:
