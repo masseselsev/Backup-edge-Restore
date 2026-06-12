@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react';
 import TaskLogsModal from './TaskLogsModal';
+import { DropdownTextInput } from './SearchableSelect';
 
 interface IsoStatus {
   base_iso_cached: boolean;
@@ -206,17 +207,12 @@ export default function ClientIsoTab() {
           <form onSubmit={handleGenerate} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Target Orchestrator IP / Domain</label>
-              <input
-                type="text"
-                required
-                list="generator-orchestrator-ips"
+              <DropdownTextInput
                 value={orchestratorIp}
-                onChange={(e) => setOrchestratorIp(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                onChange={setOrchestratorIp}
+                options={availableIps}
+                required
               />
-              <datalist id="generator-orchestrator-ips">
-                {availableIps.map(ip => <option key={ip} value={ip} />)}
-              </datalist>
             </div>
 
             <div>

@@ -111,3 +111,72 @@ export function SearchableSelect({ options, value, onChange, placeholder, disabl
     </div>
   );
 }
+
+interface DropdownTextInputProps {
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  placeholder?: string;
+  required?: boolean;
+  className?: string;
+}
+
+export function DropdownTextInput({ value, onChange, options, placeholder, required, className }: DropdownTextInputProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as globalThis.Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <div className="relative flex items-center">
+        <input
+          type="text"
+          required={required}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          className={className || "w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"}
+        />
+        {options.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className="absolute right-2 text-zinc-500 hover:text-zinc-300 text-[10px] p-1 select-none focus:outline-none"
+          >
+            ▼
+          </button>
+        )}
+      </div>
+
+      {isOpen && options.length > 0 && (
+        <div className="absolute left-0 right-0 z-50 mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl max-h-48 overflow-y-auto animate-dropdown-in">
+          <div className="py-1">
+            {options.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  onChange(opt);
+                  setIsOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-zinc-800 transition-colors text-zinc-100 font-semibold ${opt === value ? 'bg-indigo-600/30' : ''}`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

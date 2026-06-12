@@ -8,6 +8,7 @@ import SettingsTab from './components/SettingsTab';
 import ClientIsoTab from './components/ClientIsoTab';
 import TaskLogsModal from './components/TaskLogsModal';
 import NetworkSettingsModal from './components/NetworkSettingsModal';
+import { DropdownTextInput } from './components/SearchableSelect';
 
 type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso';
 
@@ -381,18 +382,13 @@ export default function App() {
             <form onSubmit={handleSaveIp} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Orchestrator IP Address</label>
-                <input
-                  type="text"
-                  required
-                  list="app-orchestrator-ips"
-                  placeholder="e.g. 192.168.222.2 (IP accessible to edge nodes)"
+                <DropdownTextInput
                   value={orchestratorIp}
-                  onChange={(e) => setOrchestratorIp(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  onChange={setOrchestratorIp}
+                  options={availableIps}
+                  required
+                  placeholder="e.g. 192.168.222.2 (IP accessible to edge nodes)"
                 />
-                <datalist id="app-orchestrator-ips">
-                  {availableIps.map(ip => <option key={ip} value={ip} />)}
-                </datalist>
                 <p className="text-[10px] text-zinc-500 mt-1">
                   Ensure this is the IP address of this server that edge nodes can reach over the network.
                 </p>

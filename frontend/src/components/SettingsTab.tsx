@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Settings as Gear, CheckCircle } from 'lucide-react';
-import { SearchableSelect } from './SearchableSelect';
+import { SearchableSelect, DropdownTextInput } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
 
 interface SettingsTabProps {
@@ -194,17 +194,12 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Orchestrator IP Address (for nodes connection)</label>
-            <input
-              type="text"
-              list="settings-orchestrator-ips"
+            <DropdownTextInput
               value={orchestratorIp}
-              onChange={(e) => setOrchestratorIp(e.target.value)}
+              onChange={setOrchestratorIp}
+              options={availableIps}
               placeholder="e.g. 192.168.222.2 (leave blank to auto-detect)"
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
             />
-            <datalist id="settings-orchestrator-ips">
-              {availableIps.map(ip => <option key={ip} value={ip} />)}
-            </datalist>
           </div>
           <div>
             <div className="flex justify-between items-center mb-1.5 h-[16px]">
