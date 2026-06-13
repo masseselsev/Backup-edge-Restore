@@ -71,3 +71,14 @@ body {
   }
 }
 
+/* Premium Typography adjustments */
+body {
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+button, a, label, span, p, h1, h2, h3, h4, h5, h6 {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+

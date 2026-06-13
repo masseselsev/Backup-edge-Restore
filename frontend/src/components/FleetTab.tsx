@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, AlertTriangle, Trash2, Search, Folder, FolderOpen, ChevronRight, ChevronDown, Cpu, Square, CheckSquare } from 'lucide-react';
 import { AddNodeModal, ProvisionNodeModal, BackupCommentModal } from './NodeModals';
 import { NodeRow } from './NodeRow';
+import { useTranslation } from '../context/TranslationContext';
 
 interface Node {
   id: number;
@@ -23,6 +24,7 @@ interface FleetTabProps {
 }
 
 export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
+  const { t } = useTranslation();
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -174,7 +176,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     
     if (idsToDelete.length === 0) return;
 
-    if (!window.confirm(`Are you sure you want to delete ${idsToDelete.length} selected node(s)? This will also remove their backup histories.`)) {
+    if (!window.confirm(t('bulkDeleteConfirm', { count: idsToDelete.length }))) {
       return;
     }
 
@@ -199,7 +201,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   };
 
   const handleDeleteNode = async (nodeId: number, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete node "${name}"? This will also remove its backup history.`)) {
+    if (!window.confirm(t('deleteNodeConfirm'))) {
       return;
     }
     try {
@@ -368,8 +370,8 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">Edge Fleet</h2>
-          <p className="text-sm text-zinc-400">Manage, auto-provision and view your active Debian edge nodes.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-white">{t('nodeListTitle')}</h2>
+          <p className="text-sm text-zinc-400">{t('nodeListSub')}</p>
         </div>
         <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
           <button
@@ -382,7 +384,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 ? 'bg-rose-600/20 border-rose-500/40 text-rose-400 hover:bg-rose-600/30'
                 : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
             }`}
-            title="Bulk Delete Mode"
+            title={t('bulkDelete')}
           >
             {bulkDeleteMode ? <CheckSquare size={16} /> : <Square size={16} />}
             <Trash2 size={16} />
@@ -393,7 +395,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
               onClick={handleBulkDelete}
               className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-semibold text-xs transition-colors self-stretch sm:self-auto justify-center"
             >
-              <Trash2 size={16} /> Delete Selected ({Object.values(selectedNodeIds).filter(Boolean).length})
+              <Trash2 size={16} /> {t('deleteSelected')} ({Object.values(selectedNodeIds).filter(Boolean).length})
             </button>
           )}
 
@@ -401,7 +403,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition-colors self-stretch sm:self-auto justify-center"
           >
-            <Plus size={16} /> Add Node
+            <Plus size={16} /> {t('addNode')}
           </button>
         </div>
       </div>
@@ -411,14 +413,14 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
           <input
             type="text"
-            placeholder="Search nodes by hostname, IP, disk type, or OS version..."
+            placeholder={t('searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
           />
         </div>
         <div className="flex items-center gap-2 border-l border-zinc-800 pl-0 md:pl-4">
-          <span className="text-xs text-zinc-400 font-medium whitespace-nowrap">Group By:</span>
+          <span className="text-xs text-zinc-400 font-medium whitespace-nowrap">{t('levelLabel')}:</span>
           <div className="inline-flex rounded-lg border border-zinc-800 p-0.5 bg-zinc-950">
             {(['flat', 'prefix', 'subnet'] as const).map(mode => (
               <button
@@ -426,7 +428,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 onClick={() => setGrouping(mode)}
                 className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${grouping === mode ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
               >
-                {mode === 'flat' ? 'Flat List' : mode === 'prefix' ? 'Hostname Prefix' : 'IP Subnet'}
+                {mode === 'flat' ? t('flatView') : mode === 'prefix' ? t('prefixGrouping') : t('subnetGrouping')}
               </button>
             ))}
           </div>
@@ -454,13 +456,13 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                   />
                 </th>
               )}
-              <th className="px-4 py-2.5">Hostname</th>
-              <th className="px-4 py-2.5">IP Address</th>
+              <th className="px-4 py-2.5">{t('hostnameLabel')}</th>
+              <th className="px-4 py-2.5">{t('ipAddressLabel')}</th>
               <th className="px-4 py-2.5">OS Version</th>
               <th className="px-4 py-2.5">Disk & Interface</th>
               <th className="px-4 py-2.5">Status / Action</th>
               <th className="px-4 py-2.5">Last Backup</th>
-              <th className="px-4 py-2.5 text-right">Actions</th>
+              <th className="px-4 py-2.5 text-right">{t('actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">

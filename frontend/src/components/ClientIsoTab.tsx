@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react';
 import TaskLogsModal from './TaskLogsModal';
 import { DropdownTextInput } from './SearchableSelect';
+import { useTranslation } from '../context/TranslationContext';
 
 interface IsoStatus {
   base_iso_cached: boolean;
@@ -11,6 +12,7 @@ interface IsoStatus {
 }
 
 export default function ClientIsoTab() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<IsoStatus | null>(null);
   const [orchestratorIp, setOrchestratorIp] = useState(window.location.hostname);
   const [authToken, setAuthToken] = useState('offline-token-1234');
@@ -189,8 +191,8 @@ export default function ClientIsoTab() {
           <Cpu className="text-indigo-400" size={24} />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight">Technician Live-USB Generator</h2>
-          <p className="text-xs text-zinc-400 mt-1">Generate a bootable Debian Live client for offline fleet restoration and disk wiping.</p>
+          <h2 className="text-xl font-bold text-white tracking-tight">{t('liveUsbGenerator')}</h2>
+          <p className="text-xs text-zinc-400 mt-1">{t('liveUsbGeneratorSub')}</p>
         </div>
       </div>
 
@@ -198,15 +200,15 @@ export default function ClientIsoTab() {
         {/* Configuration Panel */}
         <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            Configuration Payload
+            {t('configPayloadTitle')}
           </h3>
           <p className="text-xs text-zinc-400 mb-4">
-            These settings will be injected into the Live-USB so the offline client can seamlessly sync with this orchestrator when plugged into the local network.
+            {t('configPayloadSub')}
           </p>
 
           <form onSubmit={handleGenerate} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Target Orchestrator IP / Domain</label>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('targetIpLabel')}</label>
               <DropdownTextInput
                 value={orchestratorIp}
                 onChange={setOrchestratorIp}
@@ -217,10 +219,10 @@ export default function ClientIsoTab() {
 
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-semibold text-zinc-400">API Authentication Token</label>
+                <label className="block text-xs font-semibold text-zinc-400">{t('apiTokenLabel')}</label>
                 {authToken && (
                   <span className="text-[10px] text-zinc-500 font-semibold font-mono">
-                    Ключевая фраза: <span className="text-amber-400 font-bold">{authToken}</span>
+                    {t('keyphraseLabel')} <span className="text-amber-400 font-bold">{authToken}</span>
                   </span>
                 )}
               </div>
@@ -242,7 +244,7 @@ export default function ClientIsoTab() {
               className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm tracking-wide shadow-lg disabled:opacity-50 transition-all"
             >
               {isGenerating ? <RefreshCw className="animate-spin" size={18} /> : <Cpu size={18} />}
-              GENERATE LIVE-USB
+              {isGenerating ? t('generatingUsb') : t('generateUsbButton')}
             </button>
           </form>
         </div>
@@ -250,15 +252,15 @@ export default function ClientIsoTab() {
         {/* Status & Download Panel */}
         <div className="space-y-6">
           <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl">
-            <h3 className="text-sm font-bold text-white mb-4">Pipeline Status</h3>
+            <h3 className="text-sm font-bold text-white mb-4">{t('pipelineStatus')}</h3>
             
             <div className="space-y-4">
               <div className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <div className="text-xs font-bold text-white">Base Debian ISO Cache</div>
+                    <div className="text-xs font-bold text-white">{t('baseIsoCache')}</div>
                     <div className="text-[10px] text-zinc-500">
-                      {status?.base_iso_cached ? 'ISO image is ready' : 'Select base ISO source'}
+                      {status?.base_iso_cached ? t('isoReady') : t('selectIsoSource')}
                     </div>
                   </div>
                   {status?.base_iso_cached && (
@@ -267,7 +269,7 @@ export default function ClientIsoTab() {
                       <button 
                         onClick={handleClearCache}
                         className="p-1 hover:bg-rose-500/20 text-rose-400 rounded transition-colors"
-                        title="Clear Cached ISO"
+                        title={t('clearCachedIso')}
                       >
                         <RefreshCw size={16} />
                       </button>
@@ -283,21 +285,21 @@ export default function ClientIsoTab() {
                         onClick={() => setIsoSourceType('official')}
                         className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'official' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
                       >
-                        Official
+                        {t('officialTab')}
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsoSourceType('url')}
                         className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'url' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
                       >
-                        Custom URL
+                        {t('customUrlTab')}
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsoSourceType('upload')}
                         className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'upload' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
                       >
-                        Upload
+                        {t('uploadTab')}
                       </button>
                     </div>
 
@@ -309,7 +311,7 @@ export default function ClientIsoTab() {
                           disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0)}
                           className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? 'DOWNLOADING...' : 'START DOWNLOAD'}
+                          {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? t('downloadProgress') : t('startDownload')}
                         </button>
                       </div>
                     )}
@@ -328,7 +330,7 @@ export default function ClientIsoTab() {
                           disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) || !customIsoUrl}
                           className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? 'DOWNLOADING...' : 'DOWNLOAD FROM URL'}
+                          {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? t('downloadProgress') : t('downloadFromUrl')}
                         </button>
                       </div>
                     )}
@@ -346,7 +348,7 @@ export default function ClientIsoTab() {
                           disabled={isUploading}
                           className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50"
                         >
-                          {isUploading ? `UPLOADING (${uploadProgress}%)` : 'UPLOAD ISO'}
+                          {isUploading ? `${t('uploadProgressText')} (${uploadProgress}%)` : t('uploadIso')}
                         </button>
                       </div>
                     )}
@@ -357,8 +359,8 @@ export default function ClientIsoTab() {
                         <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
                           <span className="text-zinc-400">
                             {status.base_iso_progress === 100
-                              ? 'Validating...'
-                              : `Downloading... ${status.base_iso_speed ? `(${status.base_iso_speed})` : ''}`
+                              ? t('validating')
+                              : `${t('downloadProgress')} ${status.base_iso_speed ? `(${status.base_iso_speed})` : ''}`
                             }
                           </span>
                           <span className="text-sky-400">{status.base_iso_progress}%</span>
@@ -376,7 +378,7 @@ export default function ClientIsoTab() {
                     {isUploading && (
                       <div className="mt-2 w-full">
                         <div className="flex justify-between items-center text-[10px] font-semibold mb-1">
-                          <span className="text-zinc-400">Uploading file...</span>
+                          <span className="text-zinc-400">{t('uploadProgressText')}</span>
                           <span className="text-emerald-400">{uploadProgress}%</span>
                         </div>
                         <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
@@ -393,13 +395,13 @@ export default function ClientIsoTab() {
 
               <div className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
                 <div>
-                  <div className="text-xs font-bold text-white">Compiled Offline Client</div>
+                  <div className="text-xs font-bold text-white">{t('compiledOfflineClient')}</div>
                   <div className="text-[10px] text-zinc-500">technician_client_v1.iso</div>
                 </div>
                 {status?.client_iso_ready ? (
-                  <span className="px-2 py-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">Ready</span>
+                  <span className="px-2 py-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">{t('readyLabel')}</span>
                 ) : (
-                  <span className="px-2 py-1 text-[10px] font-bold bg-zinc-800 text-zinc-500 border border-zinc-700 rounded uppercase">Not Found</span>
+                  <span className="px-2 py-1 text-[10px] font-bold bg-zinc-800 text-zinc-500 border border-zinc-700 rounded uppercase">{t('notFoundLabel')}</span>
                 )}
               </div>
             </div>
@@ -412,10 +414,18 @@ export default function ClientIsoTab() {
                   className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm tracking-wide shadow-lg transition-all"
                 >
                   <Download size={18} />
-                  DOWNLOAD ISO IMAGE
+                  {t('downloadIsoImage')}
                 </a>
                 <p className="text-center text-[10px] text-zinc-500 mt-2">
-                  Flash this image using <a href="https://rufus.ie/en/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors underline">Rufus</a> or <a href="https://etcher.balena.io/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors underline">balenaEtcher</a>.
+                  {t('flashInstructions').split(/(Rufus|balenaEtcher)/).map((part, index) => {
+                    if (part === 'Rufus') {
+                      return <a key={index} href="https://rufus.ie/en/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors underline">Rufus</a>;
+                    }
+                    if (part === 'balenaEtcher') {
+                      return <a key={index} href="https://etcher.balena.io/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors underline">balenaEtcher</a>;
+                    }
+                    return part;
+                  })}
                 </p>
               </div>
             )}
@@ -424,7 +434,7 @@ export default function ClientIsoTab() {
           <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start gap-3">
             <ShieldAlert className="text-indigo-400 shrink-0 mt-0.5" size={18} />
             <div className="text-xs text-indigo-200 leading-relaxed">
-              <strong>Offline Capabilities:</strong> The Live-USB bundles the identical Flasher module used by this orchestrator. When booted, it will automatically launch a secure kiosk interface to allow untethered, high-speed disk restoration from local USB storage.
+              <strong>{t('offlineCapabilities')}</strong> {t('offlineCapabilitiesText')}
             </div>
           </div>
         </div>
@@ -433,7 +443,7 @@ export default function ClientIsoTab() {
       {activeTaskId && (
         <TaskLogsModal
           taskId={activeTaskId}
-          title="Live-USB Generation Progress"
+          title={t('taskLogsModalTitle')}
           onClose={() => setActiveTaskId(null)}
         />
       )}

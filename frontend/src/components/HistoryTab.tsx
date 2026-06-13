@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight, ChevronDown, Search, Folder, FolderOpen, Cpu } from 'lucide-react';
+import { useTranslation } from '../context/TranslationContext';
 
 interface Stats {
   total_nodes: number;
@@ -33,6 +34,7 @@ interface HistoryTabProps {
 }
 
 export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<BackupHistory[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -163,13 +165,13 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
       <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
         <thead className="bg-zinc-900/50 text-zinc-500 uppercase tracking-wider font-semibold">
           <tr>
-            {showNodeInfo && <th className="px-6 py-3">Hostname</th>}
-            {showNodeInfo && <th className="px-6 py-3">IP Address</th>}
-            <th className="px-6 py-3">Archive Snapshot</th>
-            <th className="px-6 py-3">Date & Time</th>
-            <th className="px-6 py-3">Original Size</th>
-            <th className="px-6 py-3">Deduplicated Size</th>
-            <th className="px-6 py-3">Status</th>
+            {showNodeInfo && <th className="px-6 py-3">{t('hostnameLabel')}</th>}
+            {showNodeInfo && <th className="px-6 py-3">{t('ipAddressLabel')}</th>}
+            <th className="px-6 py-3">{t('snapshotColumn')}</th>
+            <th className="px-6 py-3">{t('timestampColumn')}</th>
+            <th className="px-6 py-3">{t('originalSizeColumn')}</th>
+            <th className="px-6 py-3">{t('dedupSizeColumn')}</th>
+            <th className="px-6 py-3">{t('statusColumn')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-800/50">
@@ -225,13 +227,13 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
             <Cpu size={14} className="text-zinc-500" />
             <span className="text-sm font-semibold text-zinc-100 group-hover:text-white transition-colors">{node.hostname}</span>
             <span className="text-xs text-zinc-400">({node.ip_address})</span>
-            <span className="text-xs text-zinc-500">— {subnodesCount} archive(s)</span>
+            <span className="text-xs text-zinc-500">— {subnodesCount} {t('snapshotColumn').toLowerCase()}(s)</span>
             {success > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{success} ok</span>}
-            {failed > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">{failed} failed</span>}
+            {failed > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">{failed} {t('failed').toLowerCase()}</span>}
           </div>
           <div onClick={(e) => { e.stopPropagation(); setPurgeTarget(node); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors">
             {purging[node.id] ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-            {purging[node.id] ? 'Purging...' : 'Purge All'}
+            {purging[node.id] ? t('saving') : t('clearLogs')}
           </div>
         </button>
         {isExpanded && renderArchiveTable(groupedByNode[node.id] || [])}
@@ -355,7 +357,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
               <div className="p-2.5 bg-rose-500/10 rounded-xl border border-rose-500/20">
                 <AlertTriangle className="text-rose-400" size={22} />
               </div>
-              <h3 className="text-lg font-bold text-white">Confirm Purge</h3>
+              <h3 className="text-lg font-bold text-white">{t('flashWarningTitle')}</h3>
             </div>
             <p className="text-sm text-zinc-300 mb-1">
               You are about to delete <strong className="text-white">all backup archives</strong> for:
@@ -369,13 +371,13 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
                 onClick={() => setPurgeTarget(null)}
                 className="px-4 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
                 onClick={() => handlePurge(purgeTarget)}
                 className="px-4 py-2 text-sm rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors"
               >
-                Purge All Archives
+                {t('clearLogs')}
               </button>
             </div>
           </div>
@@ -389,7 +391,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
             <Database size={24} />
           </div>
           <div>
-            <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Total Repository Data</p>
+            <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">{t('originalSizeColumn')}</p>
             <h4 className="text-xl font-bold text-white mt-1">
               {stats ? getFormatSize(stats.total_deduplicated_size_bytes) : '0 B'}
             </h4>
@@ -402,7 +404,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
             <ArrowDownCircle size={24} />
           </div>
           <div>
-            <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Original System Size</p>
+            <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">{t('originalSizeColumn')}</p>
             <h4 className="text-xl font-bold text-white mt-1">
               {stats ? getFormatSize(stats.total_original_size_bytes) : '0 B'}
             </h4>
@@ -415,10 +417,10 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
             <TrendingDown size={24} />
           </div>
           <div>
-            <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">Storage Savings</p>
+            <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">{t('localBackupStorage')}</p>
             <h4 className="text-xl font-bold text-white mt-1">{getSavedSpace()}</h4>
             <p className="text-[10px] text-purple-400 mt-0.5">
-              Dedup Ratio: {stats ? stats.deduplication_ratio : '1.0'}x
+              {t('dedupRatio')} {stats ? stats.deduplication_ratio : '1.0'}x
             </p>
           </div>
         </div>
@@ -428,8 +430,8 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
       <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h3 className="text-lg font-bold text-white">Execution History</h3>
-            <p className="text-xs text-zinc-400">Search and navigate historical edge backup snapshots.</p>
+            <h3 className="text-lg font-bold text-white">{t('tabHistory')}</h3>
+            <p className="text-xs text-zinc-400">{t('historySub')}</p>
           </div>
           <button
             onClick={fetchStats}
@@ -445,14 +447,14 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
-              placeholder="Search history by hostname, snapshot name, status, or comment..."
+              placeholder={t('searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
             />
           </div>
           <div className="flex items-center gap-2 border-l border-zinc-800 pl-0 md:pl-4">
-            <span className="text-xs text-zinc-400 font-medium whitespace-nowrap">Group By:</span>
+            <span className="text-xs text-zinc-400 font-medium whitespace-nowrap">{t('levelLabel')}:</span>
             <div className="inline-flex rounded-lg border border-zinc-800 p-0.5 bg-zinc-950">
               {(['flat', 'hostname', 'prefix', 'subnet'] as const).map(mode => (
                 <button
@@ -460,7 +462,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
                   onClick={() => setGrouping(mode)}
                   className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${grouping === mode ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
                 >
-                  {mode === 'flat' ? 'Flat List' : mode === 'hostname' ? 'Hostname' : mode === 'prefix' ? 'Hostname Prefix' : 'IP Subnet'}
+                  {mode === 'flat' ? t('flatView') : mode === 'hostname' ? t('hostnameLabel') : mode === 'prefix' ? t('prefixGrouping') : t('subnetGrouping')}
                 </button>
               ))}
             </div>
@@ -468,9 +470,9 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
         </div>
 
         {loading ? (
-          <div className="text-center py-8 text-zinc-500 text-sm">Loading history records...</div>
+          <div className="text-center py-8 text-zinc-500 text-sm">Loading...</div>
         ) : filteredHistory.length === 0 ? (
-          <div className="text-center py-8 text-zinc-500 text-sm">No backup records match your filter.</div>
+          <div className="text-center py-8 text-zinc-500 text-sm">{t('noHistoryFound')}</div>
         ) : (
           <div className="space-y-2">
             {grouping === 'flat' ? (

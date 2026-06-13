@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, RefreshCw, Wifi, Globe, Key, Settings, X, Globe2 } from 'lucide-react';
+import { useTranslation } from '../context/TranslationContext';
 
 interface NetworkSettingsModalProps {
   onClose: () => void;
@@ -36,6 +37,7 @@ interface WifiNetwork {
 }
 
 export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'wired' | 'wifi'>('wired');
   const [status, setStatus] = useState<NetworkStatus | null>(null);
   const [wifiNetworks, setWifiNetworks] = useState<WifiNetwork[]>([]);
@@ -173,7 +175,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
             <div className="p-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg">
               <Settings size={18} />
             </div>
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Network Settings</h3>
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">{t('networkSettingsTitle')}</h3>
           </div>
           <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
             <X size={18} />
@@ -190,7 +192,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                 : 'text-zinc-400 hover:text-zinc-100'
             }`}
           >
-            <Globe size={14} /> Wired (Ethernet)
+            <Globe size={14} /> {t('wiredEthernet')}
           </button>
           <button
             onClick={() => { setActiveTab('wifi'); scanWifi(); }}
@@ -200,7 +202,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                 : 'text-zinc-400 hover:text-zinc-100'
             }`}
           >
-            <Wifi size={14} /> Wi-Fi Connections
+            <Wifi size={14} /> {t('wifiConnections')}
           </button>
         </div>
 
@@ -217,20 +219,22 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
             <form onSubmit={handleApplyWired} className="space-y-4">
               <div className="bg-zinc-950/50 border border-zinc-800/50 p-3.5 rounded-xl flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold text-white block">Wired Link State</span>
+                  <span className="text-xs font-bold text-white block">{t('wiredLinkState')}</span>
                   <span className="text-[10px] text-zinc-400 mt-1 block">
-                    {status?.wired?.connected ? `Connected (${status.wired.device}) - ${status.wired.ip || 'No IP'}` : 'Disconnected'}
+                    {status?.wired?.connected 
+                      ? t('connectedWithParam').replace('{device}', status.wired.device).replace('{ip}', status.wired.ip || 'No IP') 
+                      : t('disconnectedLabel')}
                   </span>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                   status?.wired?.connected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-zinc-800 text-zinc-500'
                 }`}>
-                  {status?.wired?.connected ? 'Connected' : 'No Link'}
+                  {status?.wired?.connected ? t('connectedWithParam').split(' ')[0] : t('noLinkLabel')}
                 </span>
               </div>
 
               <div className="space-y-3">
-                <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">IP Assignment Mode</label>
+                <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">{t('ipAssignmentMode')}</label>
                 <div className="flex bg-zinc-950 p-1 border border-zinc-800/80 rounded-xl">
                   <button
                     type="button"
@@ -239,7 +243,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       wiredMode === 'auto' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
-                    Dynamic (DHCP)
+                    {t('dynamicDhcp')}
                   </button>
                   <button
                     type="button"
@@ -248,7 +252,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       wiredMode === 'manual' ? 'bg-indigo-600 text-white shadow-md' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
-                    Static IP
+                    {t('staticIp')}
                   </button>
                 </div>
               </div>
@@ -256,7 +260,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
               {wiredMode === 'manual' && (
                 <div className="grid grid-cols-2 gap-3 transition-all duration-300">
                   <div className="col-span-1">
-                    <label className="text-[10px] text-zinc-400 font-bold mb-1.5 block">IP Address</label>
+                    <label className="text-[10px] text-zinc-400 font-bold mb-1.5 block">{t('ipAddress')}</label>
                     <input
                       type="text"
                       required
@@ -267,7 +271,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                     />
                   </div>
                   <div className="col-span-1">
-                    <label className="text-[10px] text-zinc-400 font-bold mb-1.5 block">Subnet Mask</label>
+                    <label className="text-[10px] text-zinc-400 font-bold mb-1.5 block">{t('subnetMask')}</label>
                     <input
                       type="text"
                       required
@@ -278,7 +282,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-[10px] text-zinc-400 font-bold mb-1.5 block">Default Gateway</label>
+                    <label className="text-[10px] text-zinc-400 font-bold mb-1.5 block">{t('gateway')}</label>
                     <input
                       type="text"
                       value={gateway}
@@ -292,13 +296,13 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
 
               <div className="border-t border-zinc-800/80 pt-4 space-y-3">
                 <div className="flex justify-between items-center">
-                  <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">DNS Mode</label>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">{t('dnsMode')}</label>
                   <div className="flex gap-4">
                     <label className="text-xs text-zinc-300 flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="dnsMode" checked={dnsMode === 'auto'} onChange={() => setDnsMode('auto')} className="accent-indigo-600" /> Automatic
+                      <input type="radio" name="dnsMode" checked={dnsMode === 'auto'} onChange={() => setDnsMode('auto')} className="accent-indigo-600" /> {t('automatic')}
                     </label>
                     <label className="text-xs text-zinc-300 flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="dnsMode" checked={dnsMode === 'manual'} onChange={() => setDnsMode('manual')} className="accent-indigo-600" /> Manual
+                      <input type="radio" name="dnsMode" checked={dnsMode === 'manual'} onChange={() => setDnsMode('manual')} className="accent-indigo-600" /> {t('manual')}
                     </label>
                   </div>
                 </div>
@@ -310,14 +314,14 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       required
                       value={dns1}
                       onChange={e => setDns1(e.target.value)}
-                      placeholder="Primary DNS (e.g. 8.8.8.8)"
+                      placeholder={t('primaryDns')}
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
                     />
                     <input
                       type="text"
                       value={dns2}
                       onChange={e => setDns2(e.target.value)}
-                      placeholder="Secondary DNS (Optional)"
+                      placeholder={t('secondaryDns')}
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
@@ -325,8 +329,8 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
-                <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">Apply Wired Config</button>
+                <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">{t('cancel')}</button>
+                <button type="submit" className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">{t('applyWiredConfig')}</button>
               </div>
             </form>
           ) : (
@@ -334,9 +338,9 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
               {!showHiddenForm ? (
                 <>
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Wireless Networks</span>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{t('wirelessNetworks')}</span>
                     <button type="button" onClick={scanWifi} disabled={scanning} className="text-indigo-400 hover:text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50">
-                      <RefreshCw size={12} className={scanning ? 'animate-spin' : ''} /> Scan
+                      <RefreshCw size={12} className={scanning ? 'animate-spin' : ''} /> {t('scan')}
                     </button>
                   </div>
 
@@ -361,7 +365,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                     ))}
 
                     {wifiNetworks.length === 0 && !scanning && (
-                      <p className="text-zinc-500 text-xs text-center py-4 font-semibold">No networks found. Trigger scan above.</p>
+                      <p className="text-zinc-500 text-xs text-center py-4 font-semibold">{t('noWifiNetworksFound')}</p>
                     )}
                   </div>
 
@@ -370,13 +374,13 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                     onClick={() => { setShowHiddenForm(true); setSelectedSsid(null); }}
                     className="w-full p-2.5 bg-zinc-950 border border-zinc-800 border-dashed rounded-xl text-indigo-400 text-xs font-bold hover:border-zinc-700 transition-colors flex items-center justify-center gap-2"
                   >
-                    Connect to Hidden Network...
+                    {t('connectHiddenNetwork')}
                   </button>
                 </>
               ) : (
                 <div className="space-y-3">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Hidden Wireless config</span>
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{t('hiddenWirelessConfig')}</span>
                     <button type="button" onClick={() => setShowHiddenForm(false)} className="text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-colors">
                       Back to List
                     </button>
@@ -384,7 +388,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
 
                   <div className="space-y-3">
                     <div>
-                      <label className="text-[10px] text-zinc-400 font-bold mb-1 block">Network SSID (Name)</label>
+                      <label className="text-[10px] text-zinc-400 font-bold mb-1 block">{t('networkSsidName')}</label>
                       <input
                         type="text"
                         required
@@ -395,14 +399,14 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-zinc-400 font-bold mb-1 block">Security Type</label>
+                      <label className="text-[10px] text-zinc-400 font-bold mb-1 block">{t('securityType')}</label>
                       <select
                         value={hiddenSecurity}
                         onChange={e => setHiddenSecurity(e.target.value)}
                         className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
                       >
-                        <option value="WPA2">WPA/WPA2 Personal (Secured)</option>
-                        <option value="Open">Open (Unsecured)</option>
+                        <option value="WPA2">{t('wpaPersonalSecured')}</option>
+                        <option value="Open">{t('openUnsecured')}</option>
                       </select>
                     </div>
                   </div>
@@ -424,13 +428,13 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
               )}
 
               <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
-                <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Cancel</button>
+                <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">{t('cancel')}</button>
                 <button
                   type="submit"
                   disabled={!selectedSsid && !showHiddenForm}
                   className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors"
                 >
-                  Connect to Wi-Fi
+                  {t('connectToWifi')}
                 </button>
               </div>
             </form>
@@ -443,8 +447,8 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
         <div className="absolute inset-0 bg-black/80 z-50 flex flex-col items-center justify-center space-y-4 animate-fade-in">
           <RefreshCw className="animate-spin text-indigo-400" size={36} />
           <div className="text-center">
-            <p className="text-sm font-bold text-white">Applying Configuration...</p>
-            <p className="text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">Configuring NetworkManager</p>
+            <p className="text-sm font-bold text-white">{t('applyingConfig')}</p>
+            <p className="text-[10px] text-zinc-400 mt-1 uppercase tracking-wider font-semibold">{t('configuringNetworkManager')}</p>
           </div>
         </div>
       )}

@@ -18,6 +18,8 @@ class Settings(Base):
     global_exclusions = Column(Text, default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/blobstore/*,/var/spool/edge/*,/var/log/journal/*,/var/log/**/*.gz,/var/log/**/*.1', nullable=False)
     orchestrator_ip = Column(String, default='', nullable=False)
     timezone = Column(String, default='Browser Local', nullable=False)
+    language = Column(String, default='en', nullable=False)
+
 
 
 class Node(Base):

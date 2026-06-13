@@ -1,6 +1,7 @@
 import React from 'react';
 import { Cpu, CheckCircle, AlertTriangle, Settings as Gear, ShieldAlert, Trash2 } from 'lucide-react';
 import { formatDate } from './dateUtils';
+import { useTranslation } from '../context/TranslationContext';
 
 export interface Node {
   id: number;
@@ -41,6 +42,7 @@ export function NodeRow({
   onDeleteNode,
   timezone,
 }: NodeRowProps) {
+  const { t } = useTranslation();
   const [timeLeft, setTimeLeft] = React.useState<number>(0);
 
   React.useEffect(() => {
@@ -78,24 +80,24 @@ export function NodeRow({
     const statusMap: Record<string, { bg: string, text: string, border: string, label: string, icon: React.ReactNode, title: string, onClick: () => void }> = {
       READY: {
         bg: "bg-emerald-500/10 hover:bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/20",
-        label: "Ready [OK]", icon: <CheckCircle size={14} />, title: "Re-run Prepare Disk",
+        label: t('readyOk'), icon: <CheckCircle size={14} />, title: t('reRunPrepareDisk'),
         onClick: () => onRunPrepare(node.id, node.hostname)
       },
       NEEDS_FIX: {
         bg: "bg-amber-500/10 hover:bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/20",
-        label: "Needs Fix [Prepare]", icon: <AlertTriangle size={14} />, title: "Run Prepare Disk",
+        label: t('needsFixPrepare'), icon: <AlertTriangle size={14} />, title: t('runPrepareDisk'),
         onClick: () => onRunPrepare(node.id, node.hostname)
       },
       NEEDS_BOOTSTRAP: {
         bg: "bg-zinc-500/10 hover:bg-zinc-500/20", text: "text-zinc-400", border: "border-zinc-500/20",
-        label: "Provision", icon: <Gear size={14} />, title: "Provision Node",
+        label: t('statusProvision'), icon: <Gear size={14} />, title: t('provisionNodeTooltip'),
         onClick: () => onShowProvision(node)
       },
       OFFLINE: {
         bg: "bg-rose-500/10 hover:bg-rose-500/20", text: "text-rose-400", border: "border-rose-500/20",
-        label: timeLeft > 0 ? `Provision (${formatTime(timeLeft)})` : "Provision",
+        label: timeLeft > 0 ? t('provisionTimeLeft').replace('{time}', formatTime(timeLeft)) : t('statusProvision'),
         icon: <ShieldAlert size={14} />,
-        title: timeLeft > 0 ? `Auto-retry in ${formatTime(timeLeft)}` : "Provision Offline Node",
+        title: timeLeft > 0 ? t('autoRetryIn').replace('{time}', formatTime(timeLeft)) : t('provisionOfflineNode'),
         onClick: () => onShowProvision(node)
       }
     };
@@ -125,32 +127,32 @@ export function NodeRow({
       )}
       <td className="px-4 py-2.5 font-semibold text-white flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 24}px` }}>
         <Cpu size={14} className="text-zinc-500" />
-        {node.hostname}
+        <span className="break-all" title={node.hostname}>{node.hostname}</span>
       </td>
       <td className="px-4 py-2.5 text-zinc-400">{node.ip_address}:{node.ssh_port}</td>
-      <td className="px-4 py-2.5 text-zinc-300 font-medium text-xs">{node.os_version || 'Unknown'}</td>
+      <td className="px-4 py-2.5 text-zinc-300 font-medium text-xs">{node.os_version || t('unknown')}</td>
       <td className="px-4 py-2.5">
         <div className="flex flex-col">
-          <span className="text-zinc-300 font-medium text-xs">Disk: {node.disk_type}</span>
-          <span className="text-zinc-500 text-xs">Net: {node.network_iface || 'UNKNOWN'}</span>
+          <span className="text-zinc-300 font-medium text-xs">{t('diskLabel')}: {node.disk_type}</span>
+          <span className="text-zinc-500 text-xs">{t('netLabel')}: {node.network_iface || t('unknown').toUpperCase()}</span>
         </div>
       </td>
       <td className="px-4 py-2.5">{renderStatusButton()}</td>
       <td className="px-4 py-2.5 text-zinc-400">
-        {node.last_backup ? formatDate(node.last_backup, timezone) : 'Never'}
+        {node.last_backup ? formatDate(node.last_backup, timezone) : t('never')}
       </td>
-      <td className="px-4 py-2.5 text-right flex items-center justify-end gap-2 text-zinc-300">
+      <td className="px-4 py-2.5 text-right flex flex-wrap items-center justify-end gap-2 text-zinc-300">
         <button
           onClick={() => onShowBackup(node)}
           disabled={node.status !== 'READY'}
           className="px-2.5 py-1.5 text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/20 disabled:opacity-30 transition-colors"
         >
-          Backup
+          {t('backupAction')}
         </button>
         <button
           onClick={() => onDeleteNode(node.id, node.hostname)}
           className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/20 transition-colors"
-          title="Delete Node"
+          title={t('deleteNodeTooltip')}
         >
           <Trash2 size={14} />
         </button>

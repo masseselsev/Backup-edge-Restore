@@ -31,6 +31,7 @@ orchestrator_ip = "127.0.0.1"
 orchestrator_api_port = 8000
 orchestrator_ssh_port = 12345
 auth_token = ""
+language = "en"
 
 if os.path.exists(CONFIG_PATH):
     try:
@@ -40,6 +41,7 @@ if os.path.exists(CONFIG_PATH):
             orchestrator_api_port = cfg.get("orchestrator_api_port", 8000)
             orchestrator_ssh_port = cfg.get("orchestrator_ssh_port", 12345)
             auth_token = cfg.get("auth_token", "")
+            language = cfg.get("language", "en")
     except Exception as e:
         logging.error(f"Failed to load config.json: {e}")
 
@@ -161,7 +163,8 @@ def get_version():
         "version": VERSION,
         "is_kiosk": True,
         "orchestrator_ip": orchestrator_ip,
-        "auth_token": auth_token
+        "auth_token": auth_token,
+        "language": language
     }
 
 @app.get("/api/scanner/devices")

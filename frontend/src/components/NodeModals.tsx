@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from '../context/TranslationContext';
 
 interface Node {
   id: number;
@@ -16,6 +17,7 @@ interface AddNodeModalProps {
 }
 
 export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeModalProps) {
+  const { t } = useTranslation();
   const [hostname, setHostname] = useState('');
   const [ipAddress, setIpAddress] = useState('');
   const [sshPort, setSshPort] = useState(2222);
@@ -38,7 +40,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
-        <h3 className="text-lg font-bold text-white">Add Node (Auto-Provision)</h3>
+        <h3 className="text-lg font-bold text-white">{t('addNodeAutoProvision')}</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="flex items-center gap-2 mb-2 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
             <input
@@ -49,13 +51,13 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
             />
             <label htmlFor="autoDetectHostname" className="text-xs font-semibold text-zinc-300 cursor-pointer select-none">
-              Auto-detect hostname from device
+              {t('autoDetectHostLabel')}
             </label>
           </div>
 
           {!autoDetectHostname && (
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Hostname</label>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">{t('hostnameLabel')}</label>
               <input
                 type="text"
                 required
@@ -68,11 +70,11 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
           )}
           
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">IP Address / Ranges / CIDR</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">{t('ipAddressLabel')}</label>
             <input
               type="text"
               required
-              placeholder="e.g. 192.168.1.10, 192.168.1.50-60, 192.168.2.0/24"
+              placeholder={t('ipAddressPlaceholder')}
               value={ipAddress}
               onChange={(e) => setIpAddress(e.target.value)}
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
@@ -80,7 +82,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">SSH Port</label>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">{t('sshPortLabel')}</label>
               <input
                 type="number"
                 value={sshPort}
@@ -89,7 +91,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Bootstrap User</label>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">{t('bootstrapUser')}</label>
               <input
                 type="text"
                 value={username}
@@ -99,7 +101,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Temporary Password (escalation)</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">{t('tempPasswordEscalation')}</label>
             <input
               type="password"
               required
@@ -117,14 +119,14 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               onClick={onClose}
               className="px-4 py-2 text-sm font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors"
             >
-              Cancel
+              {t('cancel')}
             </button>
             <button
               type="submit"
               disabled={submitting}
               className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors"
             >
-              {submitting ? 'Registering...' : 'Provision Now'}
+              {submitting ? t('registering') : t('provisionNow')}
             </button>
           </div>
         </form>
@@ -142,6 +144,7 @@ interface ProvisionNodeModalProps {
 }
 
 export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error }: ProvisionNodeModalProps) {
+  const { t } = useTranslation();
   const [username, setUsername] = useState('root');
   const [password, setPassword] = useState('');
 
@@ -157,12 +160,12 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <div>
-          <h3 className="text-lg font-bold text-white">Manual Provision Node</h3>
-          <p className="text-xs text-zinc-400">Trigger bootstrap for node "{node.hostname}" ({node.ip_address})</p>
+          <h3 className="text-lg font-bold text-white">{t('manualProvisionNode')}</h3>
+          <p className="text-xs text-zinc-400">{t('triggerBootstrapForNode').replace('{name}', node.hostname).replace('{ip}', node.ip_address)}</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Bootstrap User</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">{t('bootstrapUser')}</label>
             <input
               type="text"
               required
@@ -172,7 +175,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Temporary Password (escalation)</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">{t('tempPasswordEscalation')}</label>
             <input
               type="password"
               required
@@ -191,14 +194,14 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
               onClick={onClose}
               className="px-4 py-2 text-sm font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors"
             >
-              Cancel
+              {t('cancel')}
             </button>
             <button
               type="submit"
               disabled={submitting}
               className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors"
             >
-              {submitting ? 'Starting...' : 'Bootstrap Node'}
+              {submitting ? t('starting') : t('bootstrapNode')}
             </button>
           </div>
         </form>
@@ -214,6 +217,7 @@ interface BackupCommentModalProps {
 }
 
 export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentModalProps) {
+  const { t } = useTranslation();
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -228,15 +232,15 @@ export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentMod
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <div>
-          <h3 className="text-lg font-bold text-white">Trigger Backup</h3>
-          <p className="text-xs text-zinc-400">Add an optional description/comment for this backup snapshot of "{node.hostname}".</p>
+          <h3 className="text-lg font-bold text-white">{t('triggerBackup')}</h3>
+          <p className="text-xs text-zinc-400">{t('addOptionalBackupComment').replace('{name}', node.hostname)}</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Backup Comment / Tag</label>
+            <label className="block text-xs font-medium text-zinc-400 mb-1">{t('backupCommentTag')}</label>
             <input
               type="text"
-              placeholder="e.g. Before kernel upgrade, Stable release v1.2"
+              placeholder={t('backupCommentPlaceholderNode')}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
@@ -250,14 +254,14 @@ export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentMod
               onClick={onClose}
               className="px-4 py-2 text-sm font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors"
             >
-              Cancel
+              {t('cancel')}
             </button>
             <button
               type="submit"
               disabled={submitting}
               className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors"
             >
-              {submitting ? 'Starting...' : 'Backup Now'}
+              {submitting ? t('starting') : t('backupNow')}
             </button>
           </div>
         </form>

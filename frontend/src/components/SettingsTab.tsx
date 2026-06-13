@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Save, Settings as Gear, CheckCircle } from 'lucide-react';
 import { SearchableSelect, DropdownTextInput } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
+import { useTranslation } from '../context/TranslationContext';
+import type { Language } from '../i18n/translations';
 
 interface SettingsTabProps {
   onSettingsUpdated?: (settings: any) => void;
 }
 
 export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
+  const { t, setLanguage } = useTranslation();
   const [sshPort, setSshPort] = useState(12345);
   const [repoPath, setRepoPath] = useState('/data/borg');
   const [keepDaily, setKeepDaily] = useState(7);
@@ -16,6 +19,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   const [globalExclusions, setGlobalExclusions] = useState('/dev/*,/proc/*,/sys/*,/run/*,/mnt/*');
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [availableIps, setAvailableIps] = useState<string[]>([]);
+  const [language, setLanguageState] = useState<Language>('en');
   
   const [useLocalTime, setUseLocalTime] = useState(true);
   const [timezone, setTimezone] = useState(() => {
@@ -60,6 +64,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         setGlobalExclusions(data.global_exclusions);
         setOrchestratorIp(data.orchestrator_ip || '');
         setAvailableIps(data.available_ips || []);
+        setLanguageState(data.language || 'en');
         
         const dbTz = data.timezone || 'Browser Local';
         let resolvedTz = 'Europe/Moscow';
@@ -99,13 +104,15 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
           keep_monthly: keepMonthly,
           global_exclusions: globalExclusions,
           orchestrator_ip: orchestratorIp,
-          timezone: savedTz
+          timezone: savedTz,
+          language: language
         })
       });
       if (res.ok) {
         const data = await res.json();
         setSuccess(true);
         setAvailableIps(data.available_ips || []);
+        setLanguage(data.language);
         if (onSettingsUpdated) {
           onSettingsUpdated(data);
         }
@@ -119,22 +126,22 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   };
 
   if (loading) {
-    return <div className="text-zinc-500 text-center py-8">Loading configuration settings...</div>;
+    return <div className="text-zinc-500 text-center py-8">{t('saving')}</div>;
   }
 
   return (
     <div className="max-w-2xl mx-auto p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-6">
       <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
         <div>
-          <h3 className="text-lg font-bold text-white flex items-center gap-2"><Gear size={18} /> Orchestrator Settings</h3>
-          <p className="text-xs text-zinc-400">Configure global parameters and Borg pruning rules.</p>
+          <h3 className="text-lg font-bold text-white flex items-center gap-2"><Gear size={18} /> {t('orchestratorSettings')}</h3>
+          <p className="text-xs text-zinc-400">{t('orchestratorSettingsSub')}</p>
         </div>
       </div>
 
       <form onSubmit={handleSave} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Borg SSH Daemon Port</label>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('borgSshPort')}</label>
             <input
               type="number"
               required
@@ -144,7 +151,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Repository Location</label>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('repoLocation')}</label>
             <input
               type="text"
               required
@@ -156,10 +163,10 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         </div>
 
         <div>
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider mt-4 mb-2">Global Pruning Retention Policies</h4>
+          <h4 className="text-xs font-bold text-white uppercase tracking-wider mt-4 mb-2">{t('globalPruning')}</h4>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">Keep Daily</label>
+              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepDaily')}</label>
               <input
                 type="number"
                 required
@@ -169,7 +176,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">Keep Weekly</label>
+              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepWeekly')}</label>
               <input
                 type="number"
                 required
@@ -179,7 +186,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">Keep Monthly</label>
+              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepMonthly')}</label>
               <input
                 type="number"
                 required
@@ -193,17 +200,17 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Orchestrator IP Address (for nodes connection)</label>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('orchestratorIpLabelSettings')}</label>
             <DropdownTextInput
               value={orchestratorIp}
               onChange={setOrchestratorIp}
               options={availableIps}
-              placeholder="e.g. 192.168.222.2 (leave blank to auto-detect)"
+              placeholder={t('orchestratorIpPlaceholderSettings')}
             />
           </div>
           <div>
-            <div className="flex justify-between items-center mb-1.5 h-[16px]">
-              <label className="block text-xs font-semibold text-zinc-400">System Timezone</label>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 mb-1.5 min-h-[16px]">
+              <label className="block text-xs font-semibold text-zinc-400">{t('systemTimezone')}</label>
               <div className="flex items-center gap-1.5">
                 <input
                   type="checkbox"
@@ -223,8 +230,8 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                   }}
                   className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
                 />
-                <label htmlFor="useLocalTime" className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 transition-colors uppercase tracking-wider cursor-pointer select-none">
-                  Use Browser Local
+                <label htmlFor="useLocalTime" className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 transition-colors uppercase tracking-wider tracking-wide cursor-pointer select-none">
+                  {t('useBrowserLocal')}
                 </label>
               </div>
             </div>
@@ -233,13 +240,28 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               value={timezone}
               onChange={setTimezone}
               disabled={useLocalTime}
-              placeholder="Select Timezone..."
+              placeholder={t('selectTimezone')}
             />
           </div>
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('appLanguageLabel')}</label>
+            <select
+              value={language}
+              onChange={(e) => setLanguageState(e.target.value as Language)}
+              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="en">English (EN)</option>
+              <option value="ru">Русский (RU)</option>
+              <option value="uk">Українська (UK)</option>
+            </select>
+          </div>
+        </div>
+
         <div>
-          <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Global File Exclusion Paths (comma-separated)</label>
+          <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('globalExclusionsLabel')}</label>
           <textarea
             rows={3}
             value={globalExclusions}
@@ -251,7 +273,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         <div className="border-t border-zinc-800 pt-4 flex items-center justify-between">
           {success && (
             <span className="text-emerald-400 text-xs flex items-center gap-1.5">
-              <CheckCircle size={14} /> Configuration saved successfully.
+              <CheckCircle size={14} /> {t('settingsSuccess')}
             </span>
           )}
           {!success && <div />}
@@ -260,7 +282,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
             disabled={saving}
             className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm tracking-wide shadow transition-colors disabled:opacity-50"
           >
-            <Save size={16} /> {saving ? 'Saving...' : 'Save Settings'}
+            <Save size={16} /> {saving ? t('saving') : t('saveSettings')}
           </button>
         </div>
       </form>

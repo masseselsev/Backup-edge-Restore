@@ -302,9 +302,13 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         shutil.copy2(f"/usr/local/lib/{py_ver}/site-packages/typing_extensions.py", os.path.join(site_packages_dst, "typing_extensions.py"))
 
         # Write Config JSON
+        import models
+        settings = db.query(models.Settings).first()
+        lang = settings.language if settings else "en"
         config_data = {
             "orchestrator_ip": target_ip,
-            "auth_token": auth_token
+            "auth_token": auth_token,
+            "language": lang
         }
         with open(os.path.join(opt_offline, "backend", "config.json"), "w") as f:
             json.dump(config_data, f)
